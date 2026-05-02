@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+.claude/
+
+# Large data / outputs (commit only if you really mean to)
+music/
+results/
+transcripts/
+Script/audio/
+Script/images/
+Script/transcripts/
+Script/__pycache__/
+
+# Vendored external repo (has its own .git)
+CTranslate2/

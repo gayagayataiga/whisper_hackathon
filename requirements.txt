@@ -1,0 +1,51 @@
+# ============================================================
+# requirements.txt - Jetson AGX Orin HTTP パイプライン
+# 対象: interface.py / whisper_server.py / mock_raspi.py
+# ============================================================
+#
+# 【インストール手順】
+#
+# Step 1: PyTorch（JetPack 専用ビルド。pip 標準では ARM64+CUDA 非対応）
+#   pip install --no-cache \
+#     "https://developer.download.nvidia.com/compute/redist/jp/v61/pytorch/\
+#      torch-2.5.0a0+872d972e41.nv24.08.17622132-cp310-cp310-linux_aarch64.whl"
+#
+#   torchaudio は PyTorch バージョンに合わせて以下を参照:
+#     https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048
+#
+# Step 2: CTranslate2（faster-whisper の依存。本環境はソースビルド済み）
+#   pip install /home/tirobot/whisper/CTranslate2/python/dist/*.whl
+#
+#   ビルド済み whl がない場合は NVIDIA インデックス経由:
+#     pip install ctranslate2 --extra-index-url https://pypi.ngc.nvidia.com
+#
+# Step 3: このファイルのパッケージ
+#   pip install -r requirements.txt
+#
+# Step 4: システムパッケージ（soundfile の依存）
+#   sudo apt install libsndfile1
+#
+# ============================================================
+
+# ── Web フレームワーク ────────────────────────────────────────
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0      # websockets, httptools 等の高速バックエンドを含む
+
+# ── HTTP クライアント ─────────────────────────────────────────
+httpx>=0.24.0                  # interface.py の非同期送信、mock_raspi.py の同期送信
+
+# ── 音声入出力 ────────────────────────────────────────────────
+soundfile>=0.12.0              # WAV 読み書き（要: sudo apt install libsndfile1）
+
+# ── 数値演算 ─────────────────────────────────────────────────
+# numpy 2.x は faster-whisper との互換性問題あり。1.x に固定する。
+numpy>=1.21.0,<2.0.0
+
+# ── Whisper 推論 ─────────────────────────────────────────────
+# ctranslate2 を Step 2 で先にインストールしてから実行すること。
+faster-whisper>=1.0.0
+
+# ── pip 管理外（別途インストールが必要なもの）────────────────
+# torch        → Step 1 の NVIDIA 専用 whl
+# ctranslate2  → Step 2 のビルド済み whl / NVIDIA インデックス
+# libsndfile1  → sudo apt install libsndfile1
