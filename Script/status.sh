@@ -34,8 +34,8 @@ curl -sf --max-time 3 http://localhost:8001/health | python3 -m json.tool 2>/dev
 
 echo ""
 echo "=== 最新の文字起こし ==="
-TRANSCRIPT_JSONL="${SCRIPT_DIR}/transcripts/transcript.jsonl"
-TRANSCRIPT_TXT="${SCRIPT_DIR}/transcripts/transcript.txt"
+TRANSCRIPT_JSONL="${SCRIPT_DIR}/../data/transcripts/transcript.jsonl"
+TRANSCRIPT_TXT="${SCRIPT_DIR}/../data/transcripts/transcript.txt"
 if [[ -s "${TRANSCRIPT_JSONL}" ]]; then
     tail -n 1 "${TRANSCRIPT_JSONL}" | python3 -c "
 import json, sys
