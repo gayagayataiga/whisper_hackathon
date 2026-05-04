@@ -10,6 +10,7 @@ venv/
 .idea/
 .DS_Store
 .claude/
+CLAUDE.md
 
 # Large data / outputs (commit only if you really mean to)
 music/
