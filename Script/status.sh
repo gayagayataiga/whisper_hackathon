@@ -7,7 +7,12 @@ echo "=== IP アドレス ==="
 printf "  ローカル        : "
 hostname -I | awk '{for(i=1;i<=NF;i++) printf "%s%s", $i, (i<NF?", ":"\n")}'
 printf "  Raspi 送信先    : "
-grep -E '^RASPI_URL' "${SCRIPT_DIR}/interface.py" | sed -E 's/.*"(http[^"]+)".*/\1/'
+if [[ -f "${SCRIPT_DIR}/.env.runtime" ]]; then
+    raspi_url=$(grep '^WHISPER_RASPI_URL=' "${SCRIPT_DIR}/.env.runtime" | cut -d= -f2-)
+    echo "${raspi_url:-(unknown)}"
+else
+    echo "(未起動 / .env.runtime なし)"
+fi
 
 echo ""
 echo "=== プロセス確認 ==="

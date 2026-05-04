@@ -18,5 +18,8 @@ results/
 data/
 Script/__pycache__/
 
+# Runtime-generated env snapshot (start.sh が出力、status.sh が参照)
+Script/.env.runtime
+
 # Vendored external repo (has its own .git)
 CTranslate2/

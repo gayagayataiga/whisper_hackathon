@@ -23,6 +23,7 @@ interface.py - Jetson AGX Orin 受け子サーバー
 import datetime
 import json
 import logging
+import os
 from pathlib import Path
 
 import httpx
@@ -37,13 +38,19 @@ from fastapi.responses import JSONResponse
 RECEIVER_PORT = 8000
 
 # ── 推論サーバー ──────────────────────────────────────────────
-INFERENCE_BASE_URL = "http://localhost:8001"
+# WHISPER_INFERENCE_URL は base URL (path は含めない)。デフォルトはローカル推論サーバー。
+INFERENCE_BASE_URL = os.environ.get("WHISPER_INFERENCE_URL", "http://localhost:8001")
 INFERENCE_TIMEOUT  = 30.0  # large-v3 の推論時間を考慮して余裕を持たせる
 
 # ── Raspi 送信先 ──────────────────────────────────────────────
-# 無線接続時: 10.27.72.53
-# 有線接続時: 192.168.10.2 (詳細は docs/raspi_network.md を参照)
-RASPI_URL     = "http://10.27.72.53:9000/command"
+# WHISPER_RASPI_URL は必須(IP の取り違えを防ぐためデフォルト値を持たない)。
+# 接続方式ごとの IP 一覧は docs/raspi_network.md を参照。
+RASPI_URL = os.environ.get("WHISPER_RASPI_URL")
+if not RASPI_URL:
+    raise RuntimeError(
+        "WHISPER_RASPI_URL is required "
+        "(例: export WHISPER_RASPI_URL=http://10.27.72.53:9000/command)"
+    )
 RASPI_TIMEOUT = 5.0
 
 # ── 保存先ルート ──────────────────────────────────────────────
