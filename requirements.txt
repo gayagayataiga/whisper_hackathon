@@ -38,8 +38,10 @@ httpx>=0.24.0                  # interface.py の非同期送信、mock_raspi.py
 soundfile>=0.12.0              # WAV 読み書き（要: sudo apt install libsndfile1）
 
 # ── 数値演算 ─────────────────────────────────────────────────
-# numpy 2.x は faster-whisper との互換性問題あり。1.x に固定する。
-numpy>=1.21.0,<2.0.0
+# faster-whisper 1.1+ / ctranslate2 4.5+ で numpy 2 系対応済み。
+# ctranslate2 は上記 Step 2 のカスタム whl で導入されるため、
+# 該当 whl は ctranslate2 4.5 以上である必要がある。
+numpy>=1.21.0,<3.0.0
 
 # ── Whisper 推論 ─────────────────────────────────────────────
 # ctranslate2 を Step 2 で先にインストールしてから実行すること。
