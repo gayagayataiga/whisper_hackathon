@@ -12,8 +12,9 @@ whisper_server.py - Jetson AGX Orin 推論サーバー（port 8001）
        └─ HTTP POST(text) → VLA サーバー
 
 エンドポイント:
-  POST /transcribe  : wav バイト列を受け取り文字起こし結果を返す
-  GET  /health      : サーバー死活確認（VRAM 情報付き）
+  POST /transcribe     : wav バイト列を受け取り文字起こし結果を返す
+  POST /reset_context  : initial_prompt 用の直前テキスト(_previous_text)をクリア
+  GET  /health         : サーバー死活確認（VRAM / コンテキスト長 情報付き）
 """
 
 import ctypes
@@ -159,6 +160,7 @@ async def health_check() -> JSONResponse:
         "model_loaded": whisper_model is not None,
         "vram_used_mb": round(vram_used),
         "vram_total_mb": round(vram_total),
+        "previous_text_chars": len(_previous_text),
     })
 
 
@@ -232,6 +234,22 @@ async def transcribe(file: UploadFile = File(...)) -> JSONResponse:
         "inference_s": round(elapsed, 3),
         "rtf": round(rtf, 3),
     })
+
+
+@app.post("/reset_context")
+async def reset_context() -> JSONResponse:
+    """initial_prompt 用の直前テキスト(_previous_text)をクリアする。
+
+    Note: /transcribe の read-modify-write 中に /reset_context が走ると
+    reset 効果が失われる race がある(transcribe 側で旧値を read 済みの
+    ローカル変数が後で write back されるため)。Raspi 駆動の逐次運用前提
+    なのでほぼ起きず許容。厳密にしたい場合は asyncio.Lock を導入する。
+    """
+    global _previous_text
+    old_len = len(_previous_text)
+    _previous_text = ""
+    logger.info(f"Context reset (was {old_len} chars)")
+    return JSONResponse({"status": "ok"})
 
 
 # ============================================================

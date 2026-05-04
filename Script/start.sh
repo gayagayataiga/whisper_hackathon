@@ -26,12 +26,13 @@ fi
 cd "${SCRIPT_DIR}"
 
 # 上ペイン: 推論サーバー(8001) — モデルロードを先に開始する
+# --workers 1: _previous_text のプロセス間共有を避けるため明示(uvicorn のデフォルトでもあるが意図を残す)
 tmux new-session -d -s "${SESSION}" -x 220 -y 50 \
-    "${PYTHON} -m uvicorn whisper_server:app --host 0.0.0.0 --port 8001 --log-level info"
+    "${PYTHON} -m uvicorn whisper_server:app --host 0.0.0.0 --port 8001 --workers 1 --log-level info"
 
 # 下ペイン: 受け子サーバー(8000)
 tmux split-window -t "${SESSION}" -v \
-    "${PYTHON} -m uvicorn interface:app --host 0.0.0.0 --port 8000 --log-level info"
+    "${PYTHON} -m uvicorn interface:app --host 0.0.0.0 --port 8000 --workers 1 --log-level info"
 
 # 上ペインを大きめに（推論ログが多い）
 tmux resize-pane -t "${SESSION}:0.0" -y 35

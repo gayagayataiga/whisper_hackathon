@@ -14,9 +14,10 @@ interface.py - Jetson AGX Orin 受け子サーバー
        └─ HTTP POST(text) → VLA サーバー
 
 エンドポイント:
-  POST /audio   : Raspi から wav を受け取り保存し、パイプラインを実行
-  POST /image   : Raspi から画像を受け取り保存
-  GET  /health  : サーバー死活確認
+  POST /audio          : Raspi から wav を受け取り保存し、パイプラインを実行
+  POST /image          : Raspi から画像を受け取り保存
+  POST /reset_context  : 推論サーバーの initial_prompt 用直前テキストをクリア(転送)
+  GET  /health         : サーバー死活確認
 """
 
 import datetime
@@ -36,8 +37,8 @@ from fastapi.responses import JSONResponse
 RECEIVER_PORT = 8000
 
 # ── 推論サーバー ──────────────────────────────────────────────
-INFERENCE_URL     = "http://localhost:8001/transcribe"
-INFERENCE_TIMEOUT = 30.0  # large-v3 の推論時間を考慮して余裕を持たせる
+INFERENCE_BASE_URL = "http://localhost:8001"
+INFERENCE_TIMEOUT  = 30.0  # large-v3 の推論時間を考慮して余裕を持たせる
 
 # ── Raspi 送信先 ──────────────────────────────────────────────
 # 無線接続時: 10.27.72.53
@@ -90,7 +91,7 @@ async def startup_event() -> None:
     logger.info(f"Transcript directory: {TRANSCRIPT_DIR.resolve()}")
     logger.info(f"Image directory     : {IMAGE_DIR.resolve()}")
     logger.info(f"Audio directory     : {AUDIO_DIR.resolve()}")
-    logger.info(f"Inference server: {INFERENCE_URL}")
+    logger.info(f"Inference server: {INFERENCE_BASE_URL}")
     logger.info(f"Raspi server    : {RASPI_URL}")
 
 # ============================================================
@@ -138,7 +139,7 @@ async def forward_to_inference(wav_bytes: bytes, filename: str) -> dict:
     try:
         async with httpx.AsyncClient(timeout=INFERENCE_TIMEOUT) as client:
             response = await client.post(
-                INFERENCE_URL,
+                f"{INFERENCE_BASE_URL}/transcribe",
                 files={"file": (filename, wav_bytes, "audio/wav")},
             )
             response.raise_for_status()
@@ -274,6 +275,31 @@ async def receive_audio(file: UploadFile = File(...)) -> JSONResponse:
         "duration_s": duration_s,
         "raspi_sent": raspi_sent,
     })
+
+
+@app.post("/reset_context")
+async def reset_context() -> JSONResponse:
+    """推論サーバーの initial_prompt 用直前テキストをクリアする(転送のみ)。"""
+    try:
+        async with httpx.AsyncClient(timeout=INFERENCE_TIMEOUT) as client:
+            response = await client.post(f"{INFERENCE_BASE_URL}/reset_context")
+            response.raise_for_status()
+            return JSONResponse(response.json())
+
+    except httpx.TimeoutException:
+        logger.error(f"Inference server timeout ({INFERENCE_TIMEOUT}s)")
+        raise HTTPException(status_code=504, detail="Inference server timeout")
+
+    except httpx.HTTPStatusError as e:
+        logger.error(f"Inference server error: {e.response.status_code} {e.response.text}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Inference server returned {e.response.status_code}"
+        )
+
+    except httpx.ConnectError:
+        logger.error("Cannot connect to inference server")
+        raise HTTPException(status_code=502, detail="Inference server unreachable")
 
 
 @app.post("/image")
