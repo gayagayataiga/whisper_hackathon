@@ -10,6 +10,10 @@
 | 無線     | `10.27.72.53`   | 9000   | 現在使用中 (2026-05-02)  |
 | 有線     | `192.168.10.2`  | 9000   | 有線接続に戻したとき用   |
 
+Jetson 側 (有線) は `eno1` に `192.168.10.1/24` を固定。
+NetworkManager プロファイル `Wired connection 1` に保存済み
+(MAC `3C:6D:66:B1:AB:FA` で紐付け、autoconnect-priority=100)。
+
 ## 起動方法
 
 `Script/start.sh` 起動時に `WHISPER_RASPI_URL` を環境変数で渡す:
