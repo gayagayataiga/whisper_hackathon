@@ -11,7 +11,7 @@ interface.py - Jetson AGX Orin 受け子サーバー
        ↓ HTTP Response(text)
   受け子サーバー(8000)
        ├─ タイムスタンプ付き txt 追記保存
-       └─ HTTP POST(text) → VLA サーバー
+       └─ HTTP POST(text) → Raspi
 
 エンドポイント:
   POST /audio          : Raspi から wav を受け取り保存し、パイプラインを実行
@@ -211,7 +211,7 @@ async def receive_audio(file: UploadFile = File(...)) -> JSONResponse:
       2. 推論サーバー(8001)へ転送
       3. text を受け取る
       4. txt 追記保存
-      5. VLA サーバーへ送信
+      5. Raspi へ送信
 
     Args:
         file: WAV ファイル（16kHz / 16bit / モノラル）
@@ -220,7 +220,7 @@ async def receive_audio(file: UploadFile = File(...)) -> JSONResponse:
         {
             "text": "文字起こし結果",
             "duration_s": 1.23,
-            "vla_sent": true
+            "raspi_sent": true
         }
     """
     # ── wav 受信 ──────────────────────────────────────────────
@@ -251,11 +251,11 @@ async def receive_audio(file: UploadFile = File(...)) -> JSONResponse:
 
     # 空文字（無音・雑音）は保存・転送しない
     if not text:
-        logger.info("Empty transcription — skipping save and VLA send")
+        logger.info("Empty transcription — skipping save and Raspi send")
         return JSONResponse({
             "text": "",
             "duration_s": duration_s,
-            "vla_sent": False,
+            "raspi_sent": False,
         })
 
     # ── txt / jsonl 追記保存 ──────────────────────────────────

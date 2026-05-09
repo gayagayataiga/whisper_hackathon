@@ -9,7 +9,7 @@ whisper_server.py - Jetson AGX Orin 推論サーバー（port 8001）
        ↓ HTTP Response(text)
   受け子サーバー(8000)
        ├─ タイムスタンプ付き txt 追記保存
-       └─ HTTP POST(text) → VLA サーバー
+       └─ HTTP POST(text) → Raspi
 
 エンドポイント:
   POST /transcribe     : wav バイト列を受け取り文字起こし結果を返す

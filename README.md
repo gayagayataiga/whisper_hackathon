@@ -1,7 +1,7 @@
 # whisper
 
 Jetson AGX Orin 上で動作する Whisper 音声文字起こしパイプライン。
-Raspberry Pi から送られてきた音声を受け取り、`faster-whisper` で推論し、結果を VLA サーバーへ転送する。
+Raspberry Pi から送られてきた音声を受け取り、`faster-whisper` で推論し、結果を Raspi へ転送する。
 
 ## アーキテクチャ
 
@@ -17,7 +17,7 @@ Raspi
   ▼
 受け子サーバー
   ├─ タイムスタンプ付き txt 追記保存
-  └─ HTTP POST (text) → VLA サーバー
+  └─ HTTP POST (text) → Raspi
 ```
 
 Raspi 側の受信・モックは `Script/raspi_receiver.py` / `Script/mock_raspi.py`。
