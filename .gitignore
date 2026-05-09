@@ -21,5 +21,8 @@ Script/__pycache__/
 # Runtime-generated env snapshot (start.sh が出力、status.sh が参照)
 Script/.env.runtime
 
+# raspi_receiver.py がカレントに吐く受信ログ(本番は Raspi 側で生成される)
+Script/received_transcripts.txt
+
 # Vendored external repo (has its own .git)
 CTranslate2/
