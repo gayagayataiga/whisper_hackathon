@@ -45,12 +45,7 @@ INFERENCE_TIMEOUT  = 30.0  # large-v3 の推論時間を考慮して余裕を持
 # ── Raspi 送信先 ──────────────────────────────────────────────
 # WHISPER_RASPI_URL は必須(IP の取り違えを防ぐためデフォルト値を持たない)。
 # 接続方式ごとの IP 一覧は docs/raspi_network.md を参照。
-RASPI_URL = os.environ.get("WHISPER_RASPI_URL")
-if not RASPI_URL:
-    raise RuntimeError(
-        "WHISPER_RASPI_URL is required "
-        "(例: export WHISPER_RASPI_URL=http://10.27.72.53:9000/command)"
-    )
+RASPI_URL = os.environ.get("WHISPER_RASPI_URL")  # 未設定なら送信スキップ
 RASPI_TIMEOUT = 5.0
 
 # ── 保存先ルート ──────────────────────────────────────────────
@@ -275,7 +270,7 @@ async def receive_audio(file: UploadFile = File(...)) -> JSONResponse:
         logger.error(f"Failed to save transcript: {e}")
 
     # ── Raspi へ送信 ──────────────────────────────────────────
-    raspi_sent = await send_to_raspi(text)
+    raspi_sent = await send_to_raspi(text) if RASPI_URL else False
 
     return JSONResponse({
         "text": text,

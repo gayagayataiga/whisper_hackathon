@@ -9,3 +9,7 @@ if tmux has-session -t "${SESSION}" 2>/dev/null; then
 else
     echo "[Info] Session '${SESSION}' は起動していません。"
 fi
+
+# ── ファン制御を nvfancontrol に戻す ─────────────────────────
+echo "[Info] nvfancontrol を再起動してファン制御を戻します..."
+sudo systemctl restart nvfancontrol
