@@ -1,53 +1,53 @@
 # ============================================================
-# requirements.txt - Jetson AGX Orin HTTP パイプライン
-# 対象: interface.py / whisper_server.py / mock_raspi.py
+# requirements.txt - Jetson AGX Orin HTTP pipeline
+# Target: interface.py / whisper_server.py / mock_raspi.py
 # ============================================================
 #
-# 【インストール手順】
+# [Installation steps]
 #
-# Step 1: PyTorch（JetPack 専用ビルド。pip 標準では ARM64+CUDA 非対応）
+# Step 1: PyTorch (Jetson-specific build; standard pip does not support ARM64+CUDA)
 #   pip install --no-cache \
 #     "https://developer.download.nvidia.com/compute/redist/jp/v61/pytorch/\
 #      torch-2.5.0a0+872d972e41.nv24.08.17622132-cp310-cp310-linux_aarch64.whl"
 #
-#   torchaudio は PyTorch バージョンに合わせて以下を参照:
+#   For torchaudio, match the PyTorch version using:
 #     https://forums.developer.nvidia.com/t/pytorch-for-jetson/72048
 #
-# Step 2: CTranslate2（faster-whisper の依存。本環境はソースビルド済み）
+# Step 2: CTranslate2 (faster-whisper dependency; pre-built in this environment)
 #   pip install /home/tirobot/whisper/CTranslate2/python/dist/*.whl
 #
-#   ビルド済み whl がない場合は NVIDIA インデックス経由:
+#   If no pre-built whl is available, install via NVIDIA index:
 #     pip install ctranslate2 --extra-index-url https://pypi.ngc.nvidia.com
 #
-# Step 3: このファイルのパッケージ
+# Step 3: Packages in this file
 #   pip install -r requirements.txt
 #
-# Step 4: システムパッケージ（soundfile の依存）
+# Step 4: System packages (required by soundfile)
 #   sudo apt install libsndfile1
 #
 # ============================================================
 
-# ── Web フレームワーク ────────────────────────────────────────
+# ── Web framework ─────────────────────────────────────────────
 fastapi>=0.100.0
-uvicorn[standard]>=0.23.0      # websockets, httptools 等の高速バックエンドを含む
+uvicorn[standard]>=0.23.0      # includes fast backends: websockets, httptools, etc.
 
-# ── HTTP クライアント ─────────────────────────────────────────
-httpx>=0.24.0                  # interface.py の非同期送信、mock_raspi.py の同期送信
+# ── HTTP client ───────────────────────────────────────────────
+httpx>=0.24.0                  # async requests in interface.py, sync in mock_raspi.py
 
-# ── 音声入出力 ────────────────────────────────────────────────
-soundfile>=0.12.0              # WAV 読み書き（要: sudo apt install libsndfile1）
+# ── Audio I/O ─────────────────────────────────────────────────
+soundfile>=0.12.0              # WAV read/write (requires: sudo apt install libsndfile1)
 
-# ── 数値演算 ─────────────────────────────────────────────────
-# faster-whisper 1.1+ / ctranslate2 4.5+ で numpy 2 系対応済み。
-# ctranslate2 は上記 Step 2 のカスタム whl で導入されるため、
-# 該当 whl は ctranslate2 4.5 以上である必要がある。
+# ── Numerical computation ─────────────────────────────────────
+# faster-whisper 1.1+ / ctranslate2 4.5+ support numpy 2.x.
+# ctranslate2 is installed via the custom whl in Step 2;
+# that whl must be ctranslate2 4.5 or later.
 numpy>=1.21.0,<3.0.0
 
-# ── Whisper 推論 ─────────────────────────────────────────────
-# ctranslate2 を Step 2 で先にインストールしてから実行すること。
+# ── Whisper inference ─────────────────────────────────────────
+# Run Step 2 to install ctranslate2 before running this step.
 faster-whisper>=1.0.0
 
-# ── pip 管理外（別途インストールが必要なもの）────────────────
-# torch        → Step 1 の NVIDIA 専用 whl
-# ctranslate2  → Step 2 のビルド済み whl / NVIDIA インデックス
+# ── Not managed by pip (install separately) ───────────────────
+# torch        → NVIDIA-specific whl from Step 1
+# ctranslate2  → pre-built whl or NVIDIA index from Step 2
 # libsndfile1  → sudo apt install libsndfile1
