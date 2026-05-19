@@ -1,50 +1,50 @@
-# TODO — B / C 残課題
+# TODO — Remaining tasks for B / C
 
-初回コミット時に「A: 壊れている / 古い記述の修正」までは反映済み。
-ここでは B (動作改善) と C (設定外出し) で未着手のものをまとめる。
+At the time of the initial commit, everything up to "A: Fix broken / outdated descriptions" was already applied.
+This document summarizes the unfinished items under B (behavior improvements) and C (externalizing configuration).
 
-完了済み (詳細は `git log` 参照):
-- C2 (numpy 制約緩和)
-- B1 (`POST /reset_context` 追加 + `/health` の `previous_text_chars`)
-- C1 (URL を環境変数 `WHISPER_RASPI_URL` / `WHISPER_INFERENCE_URL` に外出し)
+Completed (see `git log` for details):
+- C2 (relax numpy version constraint)
+- B1 (add `POST /reset_context` + `previous_text_chars` to `/health`)
+- C1 (externalize URLs to environment variables `WHISPER_RASPI_URL` / `WHISPER_INFERENCE_URL`)
 
-残るのは下記 2 件のみで、いずれも **優先度低（当面やらない）**。
+Only the 2 items below remain, both with **low priority (not planned for now)**.
 
-## 優先度低（当面やらない）
+## Low priority (not planned for now)
 
-### B2. `@app.on_event("startup")` を `lifespan` に移行
-- **動機**: FastAPI は `on_event` を deprecated 扱い。Starlette 0.36+ で警告が出る。将来的に削除される。
-- **やらない理由**: 本番は 1 モデル固定で安定稼働しており、移行の実利が薄い。Starlette が実際に `on_event` を削除する段階で対応する。
+### B2. Migrate `@app.on_event("startup")` to `lifespan`
+- **Motivation**: FastAPI treats `on_event` as deprecated. Starlette 0.36+ emits warnings and it will be removed in the future.
+- **Reason for deferring**: Production runs stably with a single fixed model, so the practical benefit of migrating is slim. Will address when Starlette actually removes `on_event`.
 
-- **場所**:
-  - `Script/whisper_server.py:116` (`startup_event` でモデルロード)
-  - `Script/interface.py:92` (`startup_event` でディレクトリ作成 + ログ)
-- **やること**:
+- **Locations**:
+  - `Script/whisper_server.py:116` (`startup_event` loads the model)
+  - `Script/interface.py:92` (`startup_event` creates directories + logging)
+- **What to do**:
   ```python
   from contextlib import asynccontextmanager
 
   @asynccontextmanager
   async def lifespan(app: FastAPI):
-      # 旧 startup_event の中身
+      # Contents of the old startup_event
       yield
-      # 必要なら shutdown 処理（モデル破棄など）
+      # Shutdown processing if needed (e.g., model teardown)
 
   app = FastAPI(lifespan=lifespan, title=..., version=...)
   ```
-- **注意点**:
-  - `whisper_model` を `app.state.whisper_model` に持たせるとテスト時の差し替えが楽になるが、現状のグローバル変数のままでも動く。スコープ膨らませるならグローバル維持で OK。
-  - `shutdown` での VRAM 解放はベンチマーク（モデル切り替え）の方が重要なので、別タスクとして切り出す（下記 B3 参照）。lifespan 移行自体には含めない。
+- **Notes**:
+  - Storing `whisper_model` in `app.state.whisper_model` makes it easier to swap during tests, but keeping it as a global variable works fine too. If you don't want to expand the scope, keeping the global is OK.
+  - Explicit VRAM release on shutdown matters more for benchmarking (model switching), so treat it as a separate task (see B3 below); do not include it in the lifespan migration itself.
 
-### B3. ベンチマーク時のモデル切り替えで VRAM を明示解放
-- **動機**: モデル A → B → C と切り替える際、前のモデルの VRAM が解放されないまま次がロードされて、OOM や速度低下の原因になりうる。
-- **やらない理由**: 本番では単一モデル運用のため不要。ベンチで OOM や速度劣化に実際にぶつかったときに対応する。
+### B3. Explicitly release VRAM when switching models during benchmarking
+- **Motivation**: When switching models A → B → C, the previous model's VRAM may not be released before the next one is loaded, potentially causing OOM or performance degradation.
+- **Reason for deferring**: Not needed in production since only a single model is used. Will address when OOM or speed degradation is actually encountered during benchmarking.
 
-- **場所**: `Script/benchmark/*` 系（モデルを順番に差し替えてる箇所）
-- **やること**: 切り替え処理に以下を挟む。
+- **Location**: `Script/benchmark/*` (wherever models are swapped in sequence)
+- **What to do**: Insert the following into the model-switching logic.
   ```python
   import gc, torch
   del whisper_model
   gc.collect()
-  torch.cuda.empty_cache()  # ctranslate2 経由なので効果は限定的だが害はない
+  torch.cuda.empty_cache()  # Effect is limited since it goes through ctranslate2, but harmless
   ```
-- **B2 との関係**: lifespan の shutdown フックはサーバー終了時にしか走らないので、ベンチの切り替えには使えない。別物として扱う。
+- **Relationship with B2**: The lifespan shutdown hook only runs when the server exits, so it cannot be used for benchmark model switching. Treat them as separate concerns.

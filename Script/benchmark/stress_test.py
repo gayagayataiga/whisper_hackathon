@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
-stress_test.py - Faster-Whisper 全モデル × 10 回ストレステスト
+stress_test.py - Faster-Whisper all-models × 10-run stress test
 
-全 Whisper モデルサイズについて、同一の音声ファイルを 10 回推論し
-VRAM・推論時間などのメトリクスを計測して results/ に JSON として保存する。
+For every Whisper model size, runs inference on the same audio file 10 times
+and records metrics such as VRAM usage and inference time, saving results as
+JSON under results/.
 """
 
 import json
@@ -15,14 +16,14 @@ from pathlib import Path
 
 import numpy as np
 
-# Script/ を sys.path に追加（modules パッケージを解決するため）
+# Add Script/ to sys.path (to resolve the modules package)
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from modules.vram import get_vram_usage_mb
 from modules.whisper_runner import load_whisper_model, transcribe_audio
 
 # ============================================================
-# 設定
+# Configuration
 # ============================================================
 
 AUDIO_PATH   = Path(__file__).parent.parent.parent / "music" / "BASIC5000_0001.wav"
@@ -37,7 +38,7 @@ MODEL_SIZES = [
     "medium",
     "large-v2",
     "large-v3",
-    "kotoba-tech/kotoba-whisper-v2.0-faster",  # 日本語特化モデル
+    "kotoba-tech/kotoba-whisper-v2.0-faster",  # Japanese-specialized model
 ]
 
 DEVICE       = "cuda"
@@ -47,11 +48,11 @@ BEAM_SIZE    = 5
 
 
 # ============================================================
-# ヘルパー
+# Helpers
 # ============================================================
 
 def load_wav_float32(path: Path) -> np.ndarray:
-    """16kHz / 16bit mono WAV を float32 配列 [-1.0, 1.0] として読み込む。"""
+    """Load a 16kHz / 16-bit mono WAV as a float32 array in [-1.0, 1.0]."""
     with wave.open(str(path), "rb") as wf:
         assert wf.getsampwidth() == 2, "Expected 16-bit PCM"
         assert wf.getnchannels() == 1, "Expected mono"
@@ -66,7 +67,7 @@ def print_separator(char: str = "─", width: int = 62) -> None:
 
 
 # ============================================================
-# メイン
+# Main
 # ============================================================
 
 def main() -> None:
@@ -128,7 +129,7 @@ def main() -> None:
                 f"→ {result.text[:60]!r}"
             )
 
-        # ── per-model 集計 ──────────────────────────────────────
+        # ── per-model aggregation ───────────────────────────────
         times  = [r["inference_time_s"] for r in runs]
         vrams  = [r["vram_after_mb"]    for r in runs]
 
@@ -160,13 +161,13 @@ def main() -> None:
         )
         print_separator()
 
-        # モデルごとに個別 JSON を保存
+        # Save an individual JSON for each model
         safe_name = model_size.replace("/", "_").replace("-", "_")
         model_file = RESULTS_DIR / f"{timestamp}_{safe_name}.json"
         model_file.write_text(json.dumps(summary, ensure_ascii=False, indent=2))
         print(f"[Stress] Saved → {model_file}")
 
-        # モデルをアンロードして VRAM を解放してから次のモデルへ
+        # Unload model and free VRAM before moving to the next model
         del model
         try:
             import torch
@@ -174,7 +175,7 @@ def main() -> None:
         except Exception:
             pass
 
-    # ── 全モデル比較サマリー JSON ────────────────────────────────
+    # ── All-model comparison summary JSON ───────────────────────
     summary_file = RESULTS_DIR / f"{timestamp}_summary.json"
     summary_file.write_text(
         json.dumps(all_results, ensure_ascii=False, indent=2)

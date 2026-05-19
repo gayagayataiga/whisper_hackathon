@@ -1,112 +1,112 @@
-# Faster-Whisper ストレステスト結果
+# Faster-Whisper Stress Test Results
 
-## 測定条件
+## Measurement Conditions
 
-| 項目 | 値 |
+| Item | Value |
 |---|---|
-| 音声ファイル | BASIC5000_0001.wav（3.19秒、16kHz mono） |
-| 正解テキスト | 水をマレーシアから**買わ**なくてはならないのです |
-| デバイス | CUDA (GPU) |
-| 演算精度 | float16 |
-| 言語 | ja |
-| beam size | 5 |
-| 試行回数 | 各モデル 10 回 |
-| GPU VRAM 合計 | 30,697 MB |
-| 実施日 | 2026-04-29 〜 2026-04-30 |
+| Audio file | BASIC5000_0001.wav (3.19 s, 16 kHz mono) |
+| Reference text | 水をマレーシアから**買わ**なくてはならないのです |
+| Device | CUDA (GPU) |
+| Compute type | float16 |
+| Language | ja |
+| Beam size | 5 |
+| Trials | 10 per model |
+| Total GPU VRAM | 30,697 MB |
+| Test dates | 2026-04-29 to 2026-04-30 |
 
 ---
 
-## 結果サマリー
+## Results Summary
 
-| モデル | avg 推論時間 | max 推論時間 | avg VRAM | max VRAM | RTF (avg) | 転写精度 |
+| Model | avg inference time | max inference time | avg VRAM | max VRAM | RTF (avg) | Transcription accuracy |
 |---|---|---|---|---|---|---|
-| tiny | 0.224 s | 0.536 s | 9,704 MB | 9,707 MB | 0.070 | ❌ 誤字あり |
-| base | 0.279 s | 0.443 s | 9,790 MB | 9,790 MB | 0.087 | ❌ 誤字あり |
-| small | 0.464 s | 0.600 s | 10,090 MB | 10,092 MB | 0.145 | ✅ 正確 |
-| medium | 0.959 s | 1.134 s | 10,440 MB | 10,441 MB | 0.301 | ✅ 正確 |
-| large-v2 | 1.479 s | 1.499 s | 10,488 MB | 10,489 MB | 0.464 | ✅ 正確 |
-| large-v3 | 1.474 s | 1.649 s | 12,687 MB | 12,706 MB | 0.462 | ✅ 正確 |
-| **kotoba-whisper-v2.0-faster** | **0.921 s** | **1.173 s** | **8,845 MB** | **8,851 MB** | **0.281** | **✅ 正確** |
+| tiny | 0.224 s | 0.536 s | 9,704 MB | 9,707 MB | 0.070 | ❌ Errors present |
+| base | 0.279 s | 0.443 s | 9,790 MB | 9,790 MB | 0.087 | ❌ Errors present |
+| small | 0.464 s | 0.600 s | 10,090 MB | 10,092 MB | 0.145 | ✅ Accurate |
+| medium | 0.959 s | 1.134 s | 10,440 MB | 10,441 MB | 0.301 | ✅ Accurate |
+| large-v2 | 1.479 s | 1.499 s | 10,488 MB | 10,489 MB | 0.464 | ✅ Accurate |
+| large-v3 | 1.474 s | 1.649 s | 12,687 MB | 12,706 MB | 0.462 | ✅ Accurate |
+| **kotoba-whisper-v2.0-faster** | **0.921 s** | **1.173 s** | **8,845 MB** | **8,851 MB** | **0.281** | **✅ Accurate** |
 
-> RTF（Real-Time Factor）= 推論時間 ÷ 音声長。1.0 未満であればリアルタイム処理可能。
+> RTF (Real-Time Factor) = inference time / audio duration. Values below 1.0 indicate real-time capable processing.
 
 ---
 
-## 各モデルの詳細
+## Per-Model Details
 
 ### tiny
 
-- 全10回で「変わ」と誤認識（正解：「買わ」）
-- 最速クラスだが日本語精度は低い
-- 初回推論が 0.54s、2回目以降は 0.17〜0.22s に安定（ウォームアップの影響）
+- Misrecognized as「変わ」on all 10 trials (correct: 「買わ」)
+- Among the fastest, but Japanese accuracy is low
+- First inference took 0.54 s; subsequent runs stabilized at 0.17–0.22 s (warm-up effect)
 
 ### base
 
-- 全10回で「変わ」と誤認識（正解：「買わ」）
-- tiny より遅いにもかかわらず精度が改善しない
-- 初回・2回目も比較的遅め（0.44s / 0.43s）でウォームアップが緩やか
+- Misrecognized as「変わ」on all 10 trials (correct: 「買わ」)
+- Slower than tiny yet accuracy does not improve
+- First and second runs were relatively slow (0.44 s / 0.43 s), indicating a gradual warm-up
 
 ### small
 
-- 全10回で「買わ」と正確に認識
-- tiny / base と比べてVRAM増加は小さいまま精度が大きく向上
-- 速度と精度のバランスが良いエントリーポイント
+- Correctly recognized「買わ」on all 10 trials
+- VRAM increase over tiny/base is small, while accuracy improves significantly
+- A good entry point balancing speed and accuracy
 
 ### medium
 
-- 全10回で「買わ」と正確に認識
-- 推論時間は 0.93〜1.13s とほぼ安定（初回のみやや遅い）
-- VRAM は small 比 +350MB 程度
+- Correctly recognized「買わ」on all 10 trials
+- Inference time stable at 0.93–1.13 s (only the first run was slightly slower)
+- VRAM is roughly +350 MB compared to small
 
 ### large-v2
 
-- 全10回で「買わ」と正確に認識（句点「。」も付与）
-- 推論時間が 1.44〜1.50s と非常に安定（ばらつき最小）
-- VRAM は medium と大差なく、安定性が高い
+- Correctly recognized「買わ」on all 10 trials (including a period「。」)
+- Inference time extremely stable at 1.44–1.50 s (smallest variance)
+- VRAM is not much different from medium, and stability is high
 
 ### large-v3
 
-- 全10回で「買わ」と正確に認識
-- large-v2 とほぼ同等の速度だが VRAM が約 +2,200MB と大幅増加
-- 9回目に 1.65s のスパイクあり（VRAM も一時増加）
+- Correctly recognized「買わ」on all 10 trials
+- Speed is nearly equal to large-v2, but VRAM increases by approximately +2,200 MB
+- A spike of 1.65 s occurred on the 9th trial (VRAM also temporarily increased)
 
-### kotoba-whisper-v2.0-faster（日本語特化）
+### kotoba-whisper-v2.0-faster (Japanese-specialized)
 
-- 全10回で「買わ」と正確に認識（language_prob = 1.0）
-- VRAM は **全モデル中最小（avg 8,845 MB）**
-- 推論時間は medium と同等（avg 0.92s）だが、VRAM が約 1,600MB 少ない
-- 初回のみ 1.17s で、2回目以降は 0.89〜0.90s に収束
-- large 系と比べて速く・軽く・同等精度という優れたバランス
+- Correctly recognized「買わ」on all 10 trials (language_prob = 1.0)
+- VRAM is the **lowest of all models (avg 8,845 MB)**
+- Inference time is comparable to medium (avg 0.92 s), but uses about 1,600 MB less VRAM
+- First run only: 1.17 s; subsequent runs converge to 0.89–0.90 s
+- Faster, lighter, and equally accurate compared to the large family — an excellent balance
 
 ---
 
-## 考察
+## Discussion
 
-### 精度の分岐点は small
+### The accuracy threshold is at small
 
-tiny・base は「買わ」→「変わ」と誤認識した。small 以上では全回正確に認識できており、日本語音声認識に実用するなら **small が最低ライン**。
+tiny and base misrecognized「買わ」as「変わ」. From small onward, every trial was accurate. For practical Japanese speech recognition, **small is the minimum viable model**.
 
-### kotoba-whisper は medium 相当の速度で large 相当の精度
+### kotoba-whisper achieves medium-level speed with large-level accuracy
 
-kotoba-whisper-v2.0-faster は日本語特化チューニングの効果が出ており、
+kotoba-whisper-v2.0-faster demonstrates the benefit of Japanese-specific fine-tuning:
 
-- 推論時間：medium とほぼ同じ（0.92s vs 0.96s）
-- VRAM：全モデル中最小（8,845 MB）
-- 精度：large 系と同等（誤認識ゼロ、language_prob = 1.0）
+- Inference time: nearly the same as medium (0.92 s vs 0.96 s)
+- VRAM: lowest of all models (8,845 MB)
+- Accuracy: equivalent to the large family (zero errors, language_prob = 1.0)
 
-という結果で、**日本語用途においては最もコスパの良いモデル**と言える。
+This makes it **the most cost-effective model for Japanese use cases**.
 
 ### large-v2 vs large-v3
 
-速度・精度はほぼ同等だが large-v3 は VRAM を約 2,200MB 多く消費する。  
-本環境（30GB GPU）では問題ないが、VRAM 制約が厳しい環境では large-v2 の優位性がある。
+Speed and accuracy are nearly identical, but large-v3 consumes about 2,200 MB more VRAM.
+This is not an issue in the current environment (30 GB GPU), but large-v2 has an advantage in VRAM-constrained settings.
 
 ---
 
-## 推奨モデル
+## Recommended Models
 
-| 用途 | 推奨モデル | 理由 |
+| Use case | Recommended model | Reason |
 |---|---|---|
-| 日本語・省VRAM・実用精度 | **kotoba-whisper-v2.0-faster** | 精度・速度・VRAM のバランスが最良 |
-| 汎用・多言語も使いたい | **large-v2** | 安定性が高く VRAM も large-v3 より少ない |
-| 速度最優先（精度妥協可） | **small** | 精度確保しつつ最速クラス |
+| Japanese, low VRAM, practical accuracy | **kotoba-whisper-v2.0-faster** | Best balance of accuracy, speed, and VRAM |
+| General-purpose, multilingual support | **large-v2** | High stability and lower VRAM than large-v3 |
+| Speed-first (accuracy can be compromised) | **small** | Fastest class while still ensuring accuracy |

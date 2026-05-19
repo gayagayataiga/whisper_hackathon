@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-raspi_receiver.py - Raspi 受信サーバー
+raspi_receiver.py - Raspi receiver server
 
-Jetson から文字起こし結果を受け取って表示・保存する。
+Receives transcription results from Jetson and displays/saves them.
 
-使い方:
+Usage:
   python raspi_receiver.py
   python raspi_receiver.py --port 9000
 """
@@ -19,14 +19,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 # ============================================================
-# 設定パラメータ
+# Configuration parameters
 # ============================================================
 
 DEFAULT_PORT    = 9000
 TRANSCRIPT_FILE = Path("./received_transcripts.txt")
 
 # ============================================================
-# ロガー設定
+# Logger configuration
 # ============================================================
 
 logging.basicConfig(
@@ -37,7 +37,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ============================================================
-# アプリ初期化
+# App initialization
 # ============================================================
 
 app = FastAPI(title="Raspi Receiver", version="1.0.0")
@@ -46,7 +46,7 @@ class CommandPayload(BaseModel):
     text: str
 
 # ============================================================
-# エンドポイント
+# Endpoints
 # ============================================================
 
 @app.get("/health")
@@ -57,9 +57,9 @@ async def health_check() -> JSONResponse:
 @app.post("/command")
 async def receive_command(payload: CommandPayload) -> JSONResponse:
     text = payload.text.strip()
-    logger.info(f"受信: {text}")
+    logger.info(f"Received: {text}")
 
-    # タイムスタンプ付きで保存
+    # Save with timestamp
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     with open(TRANSCRIPT_FILE, "a", encoding="utf-8") as f:
         f.write(f"{timestamp}\t{text}\n")
@@ -67,12 +67,12 @@ async def receive_command(payload: CommandPayload) -> JSONResponse:
     return JSONResponse({"status": "ok", "received": text})
 
 # ============================================================
-# エントリーポイント
+# Entry point
 # ============================================================
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Raspi 受信サーバー")
-    parser.add_argument("--port", default=DEFAULT_PORT, type=int, help=f"待受ポート (デフォルト: {DEFAULT_PORT})")
+    parser = argparse.ArgumentParser(description="Raspi receiver server")
+    parser.add_argument("--port", default=DEFAULT_PORT, type=int, help=f"Listening port (default: {DEFAULT_PORT})")
     args = parser.parse_args()
 
     import uvicorn

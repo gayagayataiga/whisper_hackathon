@@ -1,27 +1,27 @@
 #!/usr/bin/env python3
 """
-mock_raspi.py - 疑似 Raspi 送信スクリプト
+mock_raspi.py - Mock Raspi sender script
 
-実際の Raspi（録音 + VAD）の代わりに、
-WAV ファイルを読み込んで受け子サーバーへ HTTP POST する。
+Instead of an actual Raspi (recording + VAD),
+reads a WAV file and HTTP POSTs it to the receiver server.
 
-使い方:
-  # テストトーンを生成して送信（ファイル不要）
+Usage:
+  # Generate a test tone and send (no file needed)
   python mock_raspi.py --generate
 
-  # WAV ファイルを送信
+  # Send a WAV file
   python mock_raspi.py audio.wav
 
-  # 受け子サーバーの IP を指定
+  # Specify receiver server IP
   python mock_raspi.py audio.wav --host 192.168.1.10
 
-  # VAD をシミュレート（無音1.5秒で分割して順番に送信）
+  # Simulate VAD (split on 1.5s silence and send in order)
   python mock_raspi.py audio.wav --split
 
-  # ループ送信（同じファイルを繰り返し送る）
+  # Loop sending (repeatedly send the same file)
   python mock_raspi.py audio.wav --loop
 
-  # 利用可能なテストファイルを一覧表示
+  # List available test files
   python mock_raspi.py --list
 """
 
@@ -37,31 +37,31 @@ import numpy as np
 import soundfile as sf
 
 # ============================================================
-# 設定パラメータ
+# Configuration parameters
 # ============================================================
 
 DEFAULT_HOST     = "localhost"
 DEFAULT_PORT     = 8000
-RECEIVER_TIMEOUT = 60.0   # 推論待ちを含むため長めに設定
+RECEIVER_TIMEOUT = 60.0   # Set long to account for inference wait time
 
-SAMPLE_RATE  = 16000  # 期待するサンプルレート
-CHANNELS     = 1      # モノラル
+SAMPLE_RATE  = 16000  # Expected sample rate
+CHANNELS     = 1      # Mono
 SAMPLE_WIDTH = 2      # 16bit
 
-# VAD シミュレート用
-VAD_SILENCE_THRESHOLD = 0.01   # Float32 正規化済み振幅
-VAD_SILENCE_SEC       = 1.5    # 無音継続でファイルを切る秒数
-VAD_MIN_SPEECH_SEC    = 0.3    # これ未満のセグメントは捨てる
+# For VAD simulation
+VAD_SILENCE_THRESHOLD = 0.01   # Float32 normalized amplitude
+VAD_SILENCE_SEC       = 1.5    # Seconds of silence to cut the file
+VAD_MIN_SPEECH_SEC    = 0.3    # Discard segments shorter than this
 
 SCRIPT_DIR = Path(__file__).parent
 MUSIC_DIR  = SCRIPT_DIR.parent / "music"
 
 # ============================================================
-# ヘルパー関数
+# Helper functions
 # ============================================================
 
 def list_test_files() -> list[Path]:
-    """music ディレクトリ内の WAV ファイルを列挙する。"""
+    """List WAV files in the music directory."""
     if not MUSIC_DIR.exists():
         return []
     return sorted(MUSIC_DIR.rglob("*.wav"))
@@ -69,8 +69,8 @@ def list_test_files() -> list[Path]:
 
 def generate_test_audio(duration: float = 2.0) -> np.ndarray:
     """
-    パイプライン疎通確認用のテストトーンを生成する。
-    440Hz + 880Hz のサイン波合成音（音声認識結果は空になる場合がある）。
+    Generate a test tone for pipeline connectivity checks.
+    Synthesized sine wave of 440Hz + 880Hz (speech recognition result may be empty).
     """
     t = np.linspace(0, duration, int(SAMPLE_RATE * duration), dtype=np.float32)
     audio = 0.3 * np.sin(2 * np.pi * 440 * t) + 0.1 * np.sin(2 * np.pi * 880 * t)
@@ -79,15 +79,15 @@ def generate_test_audio(duration: float = 2.0) -> np.ndarray:
 
 def load_wav(wav_path: str) -> tuple[np.ndarray, int]:
     """
-    音声ファイルを soundfile で読み込み 16kHz Float32 モノラル配列を返す。
-    フォーマットが異なる場合は自動変換する。
+    Load an audio file with soundfile and return a 16kHz Float32 mono array.
+    Automatically converts if the format differs.
     """
     path = Path(wav_path)
     if not path.exists():
         print(f"[Error] File not found: {wav_path}")
         files = list_test_files()
         if files:
-            print(f"\n  利用可能なテストファイル（--list で詳細確認）:")
+            print(f"\n  Available test files (use --list for details):")
             for f in files[:5]:
                 print(f"    {f.relative_to(SCRIPT_DIR.parent)}")
         sys.exit(1)
@@ -95,17 +95,17 @@ def load_wav(wav_path: str) -> tuple[np.ndarray, int]:
     try:
         audio, sr = sf.read(str(path), dtype="float32")
     except Exception as e:
-        print(f"[Error] ファイルを読み込めません: {e}")
+        print(f"[Error] Cannot read file: {e}")
         sys.exit(1)
 
-    # ステレオ → モノラル
+    # Stereo → mono
     if audio.ndim == 2:
         audio = audio.mean(axis=1)
-        print(f"[Info] ステレオ → モノラルに変換しました")
+        print(f"[Info] Converted stereo to mono")
 
-    # リサンプリング（線形補間）
+    # Resampling (linear interpolation)
     if sr != SAMPLE_RATE:
-        print(f"[Info] {sr}Hz → {SAMPLE_RATE}Hz にリサンプリングします")
+        print(f"[Info] Resampling {sr}Hz → {SAMPLE_RATE}Hz")
         target_len = int(len(audio) * SAMPLE_RATE / sr)
         audio = np.interp(
             np.linspace(0, len(audio), target_len),
@@ -118,7 +118,7 @@ def load_wav(wav_path: str) -> tuple[np.ndarray, int]:
 
 
 def numpy_to_wav_bytes(audio: np.ndarray, sample_rate: int) -> bytes:
-    """Float32 numpy 配列を 16bit WAV バイト列に変換する。"""
+    """Convert a Float32 numpy array to 16bit WAV bytes."""
     audio_int16 = np.clip(audio, -1.0, 1.0)
     audio_int16 = (audio_int16 * 32767).astype(np.int16)
 
@@ -133,8 +133,8 @@ def numpy_to_wav_bytes(audio: np.ndarray, sample_rate: int) -> bytes:
 
 def split_by_vad(audio: np.ndarray, sample_rate: int) -> list[np.ndarray]:
     """
-    振幅ベースの簡易 VAD で音声を発話単位に分割する。
-    本番 Raspi の webrtcvad 挙動をシミュレートする。
+    Split audio into utterance units using a simple amplitude-based VAD.
+    Simulates the webrtcvad behavior of the production Raspi.
     """
     silence_samples    = int(VAD_SILENCE_SEC * sample_rate)
     min_speech_samples = int(VAD_MIN_SPEECH_SEC * sample_rate)
@@ -175,7 +175,7 @@ def split_by_vad(audio: np.ndarray, sample_rate: int) -> list[np.ndarray]:
 
 
 def send_wav(wav_bytes: bytes, host: str, port: int, label: str = "") -> dict | None:
-    """WAV バイト列を受け子サーバーへ HTTP POST する。"""
+    """HTTP POST WAV bytes to the receiver server."""
     url    = f"http://{host}:{port}/audio"
     prefix = f"[{label}] " if label else ""
 
@@ -194,56 +194,56 @@ def send_wav(wav_bytes: bytes, host: str, port: int, label: str = "") -> dict | 
             if text:
                 print(f"{prefix}✓ ({duration:.2f}s) → {text}")
                 if raspi_sent:
-                    print(f"{prefix}  Raspi送信: 成功")
+                    print(f"{prefix}  Raspi send: success")
             else:
-                print(f"{prefix}✓ ({duration:.2f}s) → (空: 無音または雑音)")
+                print(f"{prefix}✓ ({duration:.2f}s) → (empty: silence or noise)")
             return result
 
     except httpx.TimeoutException:
-        print(f"{prefix}✗ タイムアウト ({RECEIVER_TIMEOUT}s)")
+        print(f"{prefix}✗ Timeout ({RECEIVER_TIMEOUT}s)")
         return None
     except httpx.ConnectError:
-        print(f"{prefix}✗ 接続失敗: {url} に到達できません")
-        print(f"{prefix}  interface.py (port {port}) が起動しているか確認してください")
+        print(f"{prefix}✗ Connection failed: cannot reach {url}")
+        print(f"{prefix}  Check that interface.py (port {port}) is running")
         return None
     except httpx.HTTPStatusError as e:
-        print(f"{prefix}✗ HTTPエラー: {e.response.status_code} {e.response.text}")
+        print(f"{prefix}✗ HTTP error: {e.response.status_code} {e.response.text}")
         return None
 
 # ============================================================
-# メイン処理
+# Main processing
 # ============================================================
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="疑似 Raspi: WAV ファイルを受け子サーバーへ送信する"
+        description="Mock Raspi: send a WAV file to the receiver server"
     )
     parser.add_argument(
         "wav_file", nargs="?",
-        help="送信する WAV ファイルのパス（省略時は --generate が必要）"
+        help="Path to the WAV file to send (--generate required if omitted)"
     )
-    parser.add_argument("--host",     default=DEFAULT_HOST, help=f"受け子サーバーのホスト (デフォルト: {DEFAULT_HOST})")
-    parser.add_argument("--port",     default=DEFAULT_PORT, type=int, help=f"受け子サーバーのポート (デフォルト: {DEFAULT_PORT})")
-    parser.add_argument("--split",    action="store_true",  help="VAD をシミュレートして無音1.5秒で分割送信")
-    parser.add_argument("--loop",     action="store_true",  help="ファイルを繰り返し送信し続ける (Ctrl+C で停止)")
-    parser.add_argument("--interval", default=0.5, type=float, help="ループ時のセグメント間隔 [秒] (デフォルト: 0.5)")
-    parser.add_argument("--generate", action="store_true",  help="テストトーン (440Hz, 2秒) を生成して送信")
-    parser.add_argument("--list",     action="store_true",  help=f"{MUSIC_DIR.name}/ 内の利用可能な WAV ファイルを一覧表示")
+    parser.add_argument("--host",     default=DEFAULT_HOST, help=f"Receiver server host (default: {DEFAULT_HOST})")
+    parser.add_argument("--port",     default=DEFAULT_PORT, type=int, help=f"Receiver server port (default: {DEFAULT_PORT})")
+    parser.add_argument("--split",    action="store_true",  help="Simulate VAD and split on 1.5s silence")
+    parser.add_argument("--loop",     action="store_true",  help="Keep sending the file repeatedly (Ctrl+C to stop)")
+    parser.add_argument("--interval", default=0.5, type=float, help="Interval between segments in loop mode [seconds] (default: 0.5)")
+    parser.add_argument("--generate", action="store_true",  help="Generate a test tone (440Hz, 2s) and send it")
+    parser.add_argument("--list",     action="store_true",  help=f"List available WAV files in {MUSIC_DIR.name}/")
     args = parser.parse_args()
 
     # ── --list ───────────────────────────────────────────────
     if args.list:
         files = list_test_files()
         if not files:
-            print(f"[Info] {MUSIC_DIR} に WAV ファイルが見つかりません")
+            print(f"[Info] No WAV files found in {MUSIC_DIR}")
         else:
-            print(f"利用可能な WAV ファイル ({MUSIC_DIR}):")
+            print(f"Available WAV files ({MUSIC_DIR}):")
             for f in files:
                 info = sf.info(str(f))
                 print(f"  {str(f.relative_to(MUSIC_DIR)):<40} {info.duration:.2f}s  {info.samplerate}Hz  {info.channels}ch")
         return
 
-    # ── 音声データ準備 ────────────────────────────────────────
+    # ── Audio data preparation ────────────────────────────────
     if args.generate:
         audio       = generate_test_audio(duration=2.0)
         sample_rate = SAMPLE_RATE
@@ -253,10 +253,10 @@ def main() -> None:
         source_name = args.wav_file
     else:
         parser.print_help()
-        print("\n[Error] WAV ファイルパスか --generate を指定してください")
+        print("\n[Error] Specify a WAV file path or --generate")
         files = list_test_files()
         if files:
-            print(f"\n  利用可能なテストファイル:")
+            print(f"\n  Available test files:")
             for f in files[:5]:
                 print(f"    python mock_raspi.py {f.relative_to(SCRIPT_DIR.parent)}")
         sys.exit(1)
@@ -265,20 +265,20 @@ def main() -> None:
 
     print(f"{'='*55}")
     print(f"  Mock Raspi Sender")
-    print(f"  ソース    : {source_name} ({duration:.2f}s)")
-    print(f"  送信先    : http://{args.host}:{args.port}/audio")
-    print(f"  VAD分割   : {'有効' if args.split else '無効（全体を送信）'}")
-    print(f"  ループ    : {'有効' if args.loop else '無効'}")
+    print(f"  Source    : {source_name} ({duration:.2f}s)")
+    print(f"  Target    : http://{args.host}:{args.port}/audio")
+    print(f"  VAD split : {'enabled' if args.split else 'disabled (send whole)'}")
+    print(f"  Loop      : {'enabled' if args.loop else 'disabled'}")
     print(f"{'='*55}\n")
 
-    # ── セグメント準備 ────────────────────────────────────────
+    # ── Segment preparation ───────────────────────────────────
     if args.split:
         segments = split_by_vad(audio, sample_rate)
         if not segments:
-            print("[Error] VAD で発話セグメントが検出されませんでした。")
-            print("  → --split なしで試すか、音声ファイルを確認してください。")
+            print("[Error] No speech segments detected by VAD.")
+            print("  → Try without --split or check the audio file.")
             sys.exit(1)
-        print(f"[VAD] {len(segments)} セグメントに分割しました:")
+        print(f"[VAD] Split into {len(segments)} segments:")
         for i, seg in enumerate(segments):
             print(f"  [{i+1:02d}] {len(seg)/sample_rate:.2f}s")
         print()
@@ -289,13 +289,13 @@ def main() -> None:
     else:
         wav_list = [("full", numpy_to_wav_bytes(audio, sample_rate))]
 
-    # ── 送信ループ ────────────────────────────────────────────
+    # ── Send loop ─────────────────────────────────────────────
     loop_count = 0
     try:
         while True:
             loop_count += 1
             if args.loop:
-                print(f"--- ループ {loop_count} 回目 ---")
+                print(f"--- Loop iteration {loop_count} ---")
 
             for label, wav_bytes in wav_list:
                 send_wav(wav_bytes, args.host, args.port, label)
@@ -308,9 +308,9 @@ def main() -> None:
             time.sleep(args.interval)
 
     except KeyboardInterrupt:
-        print(f"\n[Interrupted] {loop_count} ループ送信して停止しました。")
+        print(f"\n[Interrupted] Stopped after {loop_count} loop(s).")
 
-    print("\n完了。")
+    print("\nDone.")
 
 
 if __name__ == "__main__":

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-accuracy_report_en.py - 英語 ASR ベンチマーク 精度詳細レポート
+accuracy_report_en.py - English ASR benchmark detailed accuracy report
 
-results/en/ の最新ラン（または指定ラン）を読み込み、
-モデル別の WER 詳細・誤り上位サンプルを表示する。
+Loads the latest run (or a specified run) from results/en/ and displays
+per-model WER details and the top error samples.
 
-使い方:
-    python Script/benchmark/accuracy_report_en.py           # 最新ラン
+Usage:
+    python Script/benchmark/accuracy_report_en.py           # latest run
     python Script/benchmark/accuracy_report_en.py --run 20260430_220714
-    python Script/benchmark/accuracy_report_en.py --top 20  # 誤り上位 N 件
+    python Script/benchmark/accuracy_report_en.py --top 20  # top N error samples
     python Script/benchmark/accuracy_report_en.py --model tiny.en large-v3
 """
 
@@ -29,54 +29,54 @@ MODEL_ORDER = [
 
 
 # ─────────────────────────────────────────────
-# メイン
+# Main
 # ─────────────────────────────────────────────
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="英語 ASR 精度詳細レポート")
-    parser.add_argument("--run",   help="タイムスタンプ指定（省略時は最新）")
-    parser.add_argument("--top",   type=int, default=10, help="誤り上位 N サンプルを表示（default: 10）")
-    parser.add_argument("--model", nargs="+", dest="models", help="対象モデルを絞る")
+    parser = argparse.ArgumentParser(description="English ASR detailed accuracy report")
+    parser.add_argument("--run",   help="Timestamp to use (defaults to latest)")
+    parser.add_argument("--top",   type=int, default=10, help="Show top N error samples (default: 10)")
+    parser.add_argument("--model", nargs="+", dest="models", help="Restrict to specific models")
     args = parser.parse_args()
 
     if not RESULTS_DIR.exists():
-        print(f"[Error] {RESULTS_DIR} が存在しません。先に whisper_benchmark.py を実行してください。")
+        print(f"[Error] {RESULTS_DIR} does not exist. Run whisper_benchmark.py first.")
         return
 
-    # タイムスタンプ決定
+    # Determine timestamp
     if args.run:
         timestamp = args.run
     else:
         summaries = sorted(RESULTS_DIR.glob("*_summary.json"))
         if not summaries:
-            print(f"[Error] {RESULTS_DIR} に summary JSON がありません。")
+            print(f"[Error] No summary JSON found in {RESULTS_DIR}.")
             return
         timestamp = summaries[-1].stem.replace("_summary", "")
 
     print(f"Run: {timestamp}\n")
 
-    # summary からモデル一覧取得
+    # Get model list from summary
     summary_path = RESULTS_DIR / f"{timestamp}_summary.json"
     if not summary_path.exists():
-        print(f"[Error] {summary_path} が見つかりません。")
+        print(f"[Error] {summary_path} not found.")
         return
     summary = json.loads(summary_path.read_text())
     run_models = [m["model_name"] for m in summary["models"]]
 
-    # モデルフィルタ
+    # Model filter
     target_models = args.models if args.models else MODEL_ORDER
     target_models = [m for m in target_models if m in run_models]
     if not target_models:
         target_models = run_models
 
     W = 90
-    model_rows = []  # 再計算後の集計を保持
+    model_rows = []  # holds aggregated results after recalculation
 
     for model_name in target_models:
         safe_name = model_name.replace("/", "_").replace(".", "_")
         model_path = RESULTS_DIR / f"{timestamp}_{safe_name}.json"
         if not model_path.exists():
-            print(f"[skip] {model_name}: {model_path.name} が見つかりません")
+            print(f"[skip] {model_name}: {model_path.name} not found")
             continue
 
         data = json.loads(model_path.read_text())
@@ -84,7 +84,7 @@ def main() -> None:
         if not samples:
             continue
 
-        # REF/HYP から WER を再計算（保存時の正規化と異なる可能性があるため）
+        # Recalculate WER from REF/HYP (may differ from normalization used at save time)
         for s in samples:
             if s.get("ref") and s.get("hyp") is not None:
                 s["wer_recalc"] = calc_wer(s["hyp"], s["ref"])
@@ -107,7 +107,7 @@ def main() -> None:
         print("=" * W)
         print(f"  {model_name}  ({data.get('description', '')})")
         print(f"  WER: avg={avg_wer*100:.2f}%  "
-              f"完全一致={exact_n}/{len(wer_list)} ({exact_n/len(wer_list)*100:.1f}%)  "
+              f"exact={exact_n}/{len(wer_list)} ({exact_n/len(wer_list)*100:.1f}%)  "
               f"RTF={data.get('avg_rtf', 0):.3f}  "
               f"VRAM={data.get('avg_vram_mb', 0):.0f}MB")
         print("=" * W)
@@ -118,8 +118,8 @@ def main() -> None:
             reverse=True,
         )
 
-        print(f"\n  誤りあり: {len(errors)}/{len(samples)} サンプル"
-              f"  （上位 {min(args.top, len(errors))} 件を表示）\n")
+        print(f"\n  Errors: {len(errors)}/{len(samples)} samples"
+              f"  (showing top {min(args.top, len(errors))})\n")
 
         for s in errors[: args.top]:
             print(f"  [{s['idx']:3d}]  WER={s['wer_recalc']*100:.1f}%  "
@@ -131,13 +131,13 @@ def main() -> None:
             print()
 
         if not errors:
-            print("  (全サンプル完全一致)\n")
+            print("  (all samples exact match)\n")
 
-    # ─── モデル横断サマリー ──────────────────────────────────────
+    # ─── Cross-model summary ─────────────────────────────────────
     print("=" * W)
-    print("  SUMMARY  (WER昇順)  ※whisper-normalizer で再計算")
+    print("  SUMMARY  (sorted by WER asc)  *recalculated with whisper-normalizer")
     print("=" * W)
-    print(f"  {'Model':<26} {'WER':>7}  {'完全一致':>10}  {'RTF':>6}  {'VRAM':>7}")
+    print(f"  {'Model':<26} {'WER':>7}  {'Exact':>10}  {'RTF':>6}  {'VRAM':>7}")
     print("-" * W)
 
     model_rows.sort(key=lambda r: r["avg_wer"])
@@ -149,7 +149,7 @@ def main() -> None:
 
     print("=" * W)
 
-    # JSON 保存
+    # Save JSON
     out_path = RESULTS_DIR / f"{timestamp}_accuracy_report.json"
     out_data = {
         "run":       timestamp,

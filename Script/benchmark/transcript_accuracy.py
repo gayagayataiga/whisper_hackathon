@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-transcript_accuracy.py - music/ans/ 配下の全テキストを正解として各モデルの正答率・CER を集計する。
+transcript_accuracy.py - Aggregate per-model accuracy rate and CER using all texts under music/ans/ as reference.
 
-書式: STEM:テキスト  (STEM = WAV ファイル名から .wav を除いたもの)
+Format: STEM:text  (STEM = WAV filename without the .wav extension)
 
-使い方:
-    python Script/benchmark/transcript_accuracy.py                      # results/news/ 最新
+Usage:
+    python Script/benchmark/transcript_accuracy.py                      # latest results/news/
     python Script/benchmark/transcript_accuracy.py --run 20260429_184650_news_bench
 """
 
@@ -25,28 +25,28 @@ MODEL_ORDER = ["tiny", "base", "small", "medium", "large-v2", "large-v3",
 
 
 # ============================================================
-# 正規化
+# Normalization
 # ============================================================
 
-# 句読点・記号（読点・句点・括弧・感嘆符等）
+# Punctuation and symbols (Japanese comma/period, brackets, exclamation, etc.)
 _PUNCT_RE = re.compile(
     r"[、。，．・！？…「」『』【】〔〕（）()!?\s　～〜~]"
 )
 
-# 漢数字一桁 → 算用数字（十百千万は文脈依存なので変換しない）
+# Single-digit kanji numerals -> Arabic digits (十/百/千/万 are context-dependent, so not converted)
 _KANJI_DIGIT = str.maketrans("〇一二三四五六七八九", "0123456789")
 
 
 def normalize(text: str) -> str:
-    """句読点・空白を除去し、全角/漢数字を統一する。漢字の字種は保持する。"""
-    text = unicodedata.normalize("NFKC", text)   # 全角英数→半角（５→5 等）
-    text = text.translate(_KANJI_DIGIT)           # 一→1, 二→2 ... 九→9
-    text = _PUNCT_RE.sub("", text)               # 句読点・空白を除去
+    """Remove punctuation/spaces and unify fullwidth/kanji digits. Kanji characters are kept as-is."""
+    text = unicodedata.normalize("NFKC", text)   # fullwidth alphanumerics -> halfwidth (５->5, etc.)
+    text = text.translate(_KANJI_DIGIT)           # 一->1, 二->2 ... 九->9
+    text = _PUNCT_RE.sub("", text)               # remove punctuation and spaces
     return text
 
 
 # ============================================================
-# Levenshtein 編集距離
+# Levenshtein edit distance
 # ============================================================
 
 def levenshtein(a: str, b: str) -> int:
@@ -70,11 +70,11 @@ def levenshtein(a: str, b: str) -> int:
 
 
 # ============================================================
-# ans/ 配下の全テキストを読み込む
+# Load all texts under ans/
 # ============================================================
 
 def load_all_ans(ans_dir: Path) -> dict[str, str]:
-    """{ stem: テキスト } を全ansファイルから統合して返す。"""
+    """Return { stem: text } merged from all ans files."""
     ref: dict[str, str] = {}
     for txt in sorted(ans_dir.glob("*.txt")):
         for line in txt.read_text(encoding="utf-8").splitlines():
@@ -89,7 +89,7 @@ def load_all_ans(ans_dir: Path) -> dict[str, str]:
 
 
 # ============================================================
-# ベンチマーク結果 JSON 読み込み
+# Load benchmark result JSON files
 # ============================================================
 
 def load_model_files(run_prefix: str) -> dict[str, list[dict]]:
@@ -106,17 +106,17 @@ def load_model_files(run_prefix: str) -> dict[str, list[dict]]:
 
 
 # ============================================================
-# メイン
+# Main
 # ============================================================
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run", default=None,
-                        help="タイムスタンププレフィックス。省略時は最新")
+                        help="Timestamp prefix. Defaults to the latest run.")
     args = parser.parse_args()
 
     ref_map = load_all_ans(ANS_DIR)
-    print(f"正解テキスト: {len(ref_map)} entries from {ANS_DIR.name}/")
+    print(f"Reference texts: {len(ref_map)} entries from {ANS_DIR.name}/")
 
     if args.run:
         run_prefix = args.run
@@ -189,11 +189,11 @@ def main() -> None:
             "sample_errors": sample_errors,
         })
 
-    # ── 表示 ─────────────────────────────────────────────────────
+    # ── Display ──────────────────────────────────────────────────
     W = 88
     print("=" * W)
-    print(f"  正解: music/ans/ 全ファイル  ※句読点・全角/漢数字は正規化して比較")
-    print(f"  {'Model':<22} {'正答率':>8} {'文字精度':>8} {'CER':>7}  {'avg_time':>9}  {'max_VRAM':>9}  N")
+    print(f"  Reference: all files in music/ans/  *punctuation and fullwidth/kanji digits are normalized before comparison")
+    print(f"  {'Model':<22} {'Accuracy':>8} {'CharAcc':>8} {'CER':>7}  {'avg_time':>9}  {'max_VRAM':>9}  N")
     print("-" * W)
     for r in rows:
         marker = "✓" if r["exact_rate"] == 1.0 else ("△" if r["exact_rate"] > 0 else "✗")
@@ -209,7 +209,7 @@ def main() -> None:
         )
     print("=" * W)
 
-    print("\n誤りサンプル (各モデル最大3件):")
+    print("\nError samples (up to 3 per model):")
     print("-" * W)
     for r in rows:
         if not r["sample_errors"]:
@@ -217,10 +217,10 @@ def main() -> None:
         print(f"\n  [{r['model']}]")
         for stem, ref, hyp in r["sample_errors"]:
             print(f"    {stem}")
-            print(f"      正解: {ref}")
-            print(f"      出力: {hyp}")
+            print(f"      REF: {ref}")
+            print(f"      HYP: {hyp}")
 
-    # ── JSON 保存 ────────────────────────────────────────────────
+    # ── JSON save ────────────────────────────────────────────────
     out_path = RESULTS_DIR / f"{run_prefix}_transcript_accuracy.json"
     out_data = {
         "run":       run_prefix,

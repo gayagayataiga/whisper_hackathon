@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# start.sh - 受け子(8000) + 推論(8001) を tmux で起動
+# start.sh - Launch receiver (8000) + inference (8001) in tmux
 #
-# 使い方:
-#   ./start.sh            # 起動
-#   tmux attach -t whisper  # ログを確認（上: 推論, 下: 受け子）
-#   ./stop.sh             # 停止
+# Usage:
+#   ./start.sh            # start
+#   tmux attach -t whisper  # view logs (top: inference, bottom: receiver)
+#   ./stop.sh             # stop
 
 set -euo pipefail
 
@@ -13,45 +13,45 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PYTHON="${SCRIPT_DIR}/../.venv/bin/python"
 
 if ! command -v tmux &>/dev/null; then
-    echo "[Error] tmux が見つかりません: sudo apt install tmux"
+    echo "[Error] tmux not found: sudo apt install tmux"
     exit 1
 fi
 
 if tmux has-session -t "${SESSION}" 2>/dev/null; then
-    echo "[Error] Session '${SESSION}' は既に起動中です。"
-    echo "        停止するには: ./stop.sh"
+    echo "[Error] Session '${SESSION}' is already running."
+    echo "        To stop it: ./stop.sh"
     exit 1
 fi
 
 
 cd "${SCRIPT_DIR}"
 
-# ── ファン全開・クロック固定 ──────────────────────────────────
-echo "[Info] jetson_clocks --fan を実行します..."
+# ── Max fan / lock clocks ─────────────────────────────────────
+echo "[Info] Running jetson_clocks --fan ..."
 sudo jetson_clocks --fan
 
-# ── 起動時の URL を .env.runtime に記録 (status.sh が参照) ──
+# ── Record startup URL in .env.runtime (referenced by status.sh) ──
 cat > "${SCRIPT_DIR}/.env.runtime" <<EOF
 WHISPER_INFERENCE_URL=${WHISPER_INFERENCE_URL:-http://localhost:8001}
 EOF
 chmod 600 "${SCRIPT_DIR}/.env.runtime"
 
-# 上ペイン: 推論サーバー(8001) — モデルロードを先に開始する
-# --workers 1: _previous_text のプロセス間共有を避けるため明示(uvicorn のデフォルトでもあるが意図を残す)
+# Top pane: inference server (8001) -- start model loading first
+# --workers 1: explicit to avoid sharing _previous_text across processes (uvicorn default, but kept for clarity)
 tmux new-session -d -s "${SESSION}" -x 220 -y 50 \
     "${PYTHON} -m uvicorn whisper_server:app --host 0.0.0.0 --port 8001 --workers 1 --log-level info"
 
-# 下ペイン: 受け子サーバー(8000)
-# 環境変数はコマンド文字列内で明示的に渡す。
-# (既存 tmux server の env は古いままになるため、シェル親プロセスからの継承に頼れない)
+# Bottom pane: receiver server (8000)
+# Pass environment variables explicitly inside the command string.
+# (The existing tmux server's env may be stale, so we cannot rely on inheriting from the shell parent)
 tmux split-window -t "${SESSION}" -v \
     "WHISPER_INFERENCE_URL='${WHISPER_INFERENCE_URL:-http://localhost:8001}' ${PYTHON} -m uvicorn interface:app --host 0.0.0.0 --port 8000 --workers 1 --log-level info"
 
-# 上ペインを大きめに（推論ログが多い）
+# Make the top pane larger (inference produces more log output)
 tmux resize-pane -t "${SESSION}:0.0" -y 35
 
-echo "[OK] 起動しました。"
+echo "[OK] Started."
 echo ""
-echo "  ログ確認 : tmux attach -t ${SESSION}"
-echo "  停止     : ./stop.sh"
-echo "  死活確認 : ./status.sh"
+echo "  View logs : tmux attach -t ${SESSION}"
+echo "  Stop      : ./stop.sh"
+echo "  Health    : ./status.sh"

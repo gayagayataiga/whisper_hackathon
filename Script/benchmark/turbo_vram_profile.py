@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-turbo 専用 VRAM プロファイル
+turbo-only VRAM profile
 
-Jetson AGX Orin の unified memory に対応するため、
-proc RSS（実プロセスメモリ）と CUDA cudaMemGetInfo の両方を計測する。
+Measures both proc RSS (actual process memory) and CUDA cudaMemGetInfo
+to support Jetson AGX Orin's unified memory architecture.
 
-使い方:
+Usage:
     python Script/benchmark/turbo_vram_profile.py
 """
 
@@ -28,7 +28,7 @@ MODEL = "turbo"
 
 
 # ─────────────────────────────────────────────
-# メモリ計測
+# Memory measurement
 # ─────────────────────────────────────────────
 
 _libcudart = None
@@ -78,7 +78,7 @@ def snapshot(label: str, samples: list[dict]) -> dict:
 
 
 # ─────────────────────────────────────────────
-# 音声デコード
+# Audio decoding
 # ─────────────────────────────────────────────
 
 def decode_audio(src: bytes) -> np.ndarray:
@@ -105,7 +105,7 @@ def decode_audio(src: bytes) -> np.ndarray:
 
 
 # ─────────────────────────────────────────────
-# メイン
+# Main
 # ─────────────────────────────────────────────
 
 T0 = time.monotonic()
@@ -146,7 +146,7 @@ peak_cuda = 0
 
 for i, audio in enumerate(audios, 1):
     segs, _ = model.transcribe(audio, language="en", beam_size=5)
-    list(segs)  # generatorを消費
+    list(segs)  # consume the generator
     peak_rss  = max(peak_rss,  _proc_rss_mb())
     peak_cuda = max(peak_cuda, _cuda_used_mb())
     if i in (1, 10, 30, 50, 73):
@@ -162,7 +162,7 @@ gc.collect()
 snapshot("after del + gc", snapshots)
 
 # ─────────────────────────────────────────────
-# 集計
+# Aggregation
 # ─────────────────────────────────────────────
 
 baseline = snapshots[0]              # initial
@@ -172,30 +172,30 @@ after_run   = next(s for s in snapshots if s["label"] == "after all inference")
 after_del   = next(s for s in snapshots if s["label"] == "after del + gc")
 
 print("\n" + "=" * 70)
-print("  TURBO VRAM 実測まとめ")
+print("  TURBO VRAM measurement summary")
 print("=" * 70)
-print(f"  proc RSS（プロセス実メモリ ── Jetson では正確な指標）:")
-print(f"    起動直後               : {baseline['rss_mb']:>7.0f} MB")
-print(f"    モデルロード前         : {before_load['rss_mb']:>7.0f} MB")
-print(f"    モデルロード後         : {after_load['rss_mb']:>7.0f} MB"
-      f"   (+{after_load['rss_mb'] - before_load['rss_mb']:.0f} MB ← モデル本体)")
-print(f"    推論ピーク             : {peak_rss:>7.0f} MB"
-      f"   (+{peak_rss - before_load['rss_mb']:.0f} MB ← モデル+推論バッファ)")
-print(f"    全推論終了後           : {after_run['rss_mb']:>7.0f} MB")
-print(f"    del + gc 後            : {after_del['rss_mb']:>7.0f} MB"
-      f"   (-{after_run['rss_mb'] - after_del['rss_mb']:.0f} MB 解放)")
+print(f"  proc RSS (actual process memory -- accurate indicator on Jetson):")
+print(f"    startup                : {baseline['rss_mb']:>7.0f} MB")
+print(f"    before model load      : {before_load['rss_mb']:>7.0f} MB")
+print(f"    after model load       : {after_load['rss_mb']:>7.0f} MB"
+      f"   (+{after_load['rss_mb'] - before_load['rss_mb']:.0f} MB <- model body)")
+print(f"    inference peak         : {peak_rss:>7.0f} MB"
+      f"   (+{peak_rss - before_load['rss_mb']:.0f} MB <- model + inference buffer)")
+print(f"    after all inference    : {after_run['rss_mb']:>7.0f} MB")
+print(f"    after del + gc         : {after_del['rss_mb']:>7.0f} MB"
+      f"   (-{after_run['rss_mb'] - after_del['rss_mb']:.0f} MB freed)")
 print()
-print(f"  CUDA cudaMemGetInfo（過小評価される ── 参考値）:")
-print(f"    モデルロード後         : {after_load['cuda_mb']:>7.0f} MB"
+print(f"  CUDA cudaMemGetInfo (underestimates -- reference value):")
+print(f"    after model load       : {after_load['cuda_mb']:>7.0f} MB"
       f"   (+{after_load['cuda_mb'] - before_load['cuda_mb']:.0f} MB)")
-print(f"    推論ピーク             : {peak_cuda:>7.0f} MB"
+print(f"    inference peak         : {peak_cuda:>7.0f} MB"
       f"   (+{peak_cuda - before_load['cuda_mb']:.0f} MB)")
 print()
-print(f"  モデル turbo の正味 VRAM = {peak_rss - before_load['rss_mb']:.0f} MB")
-print(f"  （= 推論ピーク RSS - ロード前 RSS）")
+print(f"  Net VRAM for turbo model = {peak_rss - before_load['rss_mb']:.0f} MB")
+print(f"  (= inference peak RSS - RSS before load)")
 print("=" * 70)
 
-# JSON 保存
+# Save JSON
 RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 out = {

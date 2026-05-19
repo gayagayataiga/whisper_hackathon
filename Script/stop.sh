@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# stop.sh - whisper tmux セッションを停止する
+# stop.sh - Stop the whisper tmux session
 
 SESSION="whisper"
 
 if tmux has-session -t "${SESSION}" 2>/dev/null; then
     tmux kill-session -t "${SESSION}"
-    echo "[OK] Session '${SESSION}' を停止しました。"
+    echo "[OK] Session '${SESSION}' stopped."
 else
-    echo "[Info] Session '${SESSION}' は起動していません。"
+    echo "[Info] Session '${SESSION}' is not running."
 fi
 
-# ── ファン制御を nvfancontrol に戻す ─────────────────────────
-echo "[Info] nvfancontrol を再起動してファン制御を戻します..."
+# ── Return fan control to nvfancontrol ───────────────────────
+echo "[Info] Restarting nvfancontrol to restore fan control ..."
 sudo systemctl restart nvfancontrol

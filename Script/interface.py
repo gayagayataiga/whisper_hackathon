@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """
-interface.py - Jetson AGX Orin 受け子サーバー
+interface.py - Jetson AGX Orin receiver server
 
-アーキテクチャ:
+Architecture:
   Raspi
        ↓ HTTP POST(wav)
-  受け子サーバー(8000) ← このファイル
+  Receiver server (8000) ← this file
        ↓ HTTP POST(wav)
-  推論サーバー(8001)
+  Inference server (8001)
        ↓ HTTP Response(text)
-  受け子サーバー(8000)
-       ├─ タイムスタンプ付き txt 追記保存
+  Receiver server (8000)
+       ├─ Append to txt file with timestamp
        └─ HTTP POST(text) → Raspi
 
-エンドポイント:
-  POST /audio          : Raspi から wav を受け取り保存し、パイプラインを実行
-  POST /image          : Raspi から画像を受け取り保存
-  POST /reset_context  : 推論サーバーの initial_prompt 用直前テキストをクリア(転送)
-  GET  /health         : サーバー死活確認
+Endpoints:
+  POST /audio          : Receive wav from Raspi, save it, and run the pipeline
+  POST /image          : Receive image from Raspi and save it
+  POST /reset_context  : Clear the previous text for inference server initial_prompt (forwarded)
+  GET  /health         : Server health check
 """
 
 import datetime
@@ -31,40 +31,40 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 
 # ============================================================
-# 設定パラメータ
+# Configuration parameters
 # ============================================================
 
-# ── サーバー ──────────────────────────────────────────────────
+# ── Server ────────────────────────────────────────────────────
 RECEIVER_PORT = 8000
 
-# ── 推論サーバー ──────────────────────────────────────────────
-# WHISPER_INFERENCE_URL は base URL (path は含めない)。デフォルトはローカル推論サーバー。
+# ── Inference server ──────────────────────────────────────────
+# WHISPER_INFERENCE_URL is the base URL (no path included). Default is the local inference server.
 INFERENCE_BASE_URL = os.environ.get("WHISPER_INFERENCE_URL", "http://localhost:8001")
-INFERENCE_TIMEOUT  = 30.0  # large-v3 の推論時間を考慮して余裕を持たせる
+INFERENCE_TIMEOUT  = 30.0  # Allow generous timeout to account for large-v3 inference time
 
-# ── Raspi 送信先 ──────────────────────────────────────────────
-# WHISPER_RASPI_URL は必須(IP の取り違えを防ぐためデフォルト値を持たない)。
-# 接続方式ごとの IP 一覧は docs/raspi_network.md を参照。
-RASPI_URL = os.environ.get("WHISPER_RASPI_URL")  # 未設定なら送信スキップ
+# ── Raspi destination ─────────────────────────────────────────
+# WHISPER_RASPI_URL is required (no default to prevent IP mix-ups).
+# See docs/raspi_network.md for IP addresses per connection method.
+RASPI_URL = os.environ.get("WHISPER_RASPI_URL")  # Skip sending if not set
 RASPI_TIMEOUT = 5.0
 
-# ── 保存先ルート ──────────────────────────────────────────────
-# Script/ の外(リポジトリ直下の data/)に保存する。
+# ── Save root ─────────────────────────────────────────────────
+# Save outside Script/ (in data/ at the repository root).
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
-# ── テキスト保存 ──────────────────────────────────────────────
+# ── Text storage ──────────────────────────────────────────────
 TRANSCRIPT_DIR   = DATA_DIR / "transcripts"
-TRANSCRIPT_FILE  = TRANSCRIPT_DIR / "transcript.txt"   # 互換: 旧フォーマット(タイムスタンプ + テキスト)
-TRANSCRIPT_JSONL = TRANSCRIPT_DIR / "transcript.jsonl" # 構造化メタデータ付き
+TRANSCRIPT_FILE  = TRANSCRIPT_DIR / "transcript.txt"   # Compatible: legacy format (timestamp + text)
+TRANSCRIPT_JSONL = TRANSCRIPT_DIR / "transcript.jsonl" # With structured metadata
 
-# ── 画像保存 ──────────────────────────────────────────────────
+# ── Image storage ─────────────────────────────────────────────
 IMAGE_DIR = DATA_DIR / "images"
 
-# ── 音声保存 ──────────────────────────────────────────────────
+# ── Audio storage ─────────────────────────────────────────────
 AUDIO_DIR = DATA_DIR / "audio"
 
 # ============================================================
-# ロガー設定
+# Logger configuration
 # ============================================================
 
 logging.basicConfig(
@@ -75,18 +75,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ============================================================
-# アプリ初期化
+# App initialization
 # ============================================================
 
 app = FastAPI(title="Receiver Server", version="1.0.0")
 
 # ============================================================
-# 起動イベント
+# Startup event
 # ============================================================
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    """起動時に保存ディレクトリを作成する。"""
+    """Create save directories on startup."""
     TRANSCRIPT_DIR.mkdir(parents=True, exist_ok=True)
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
@@ -97,14 +97,14 @@ async def startup_event() -> None:
     logger.info(f"Raspi server    : {RASPI_URL}")
 
 # ============================================================
-# ヘルパー関数
+# Helper functions
 # ============================================================
 
 def save_transcript(text: str) -> None:
     """
-    文字起こし結果をタイムスタンプ付きで txt ファイルに追記する(従来フォーマット)。
+    Append transcription result to a txt file with timestamp (legacy format).
 
-    フォーマット: YYYY-MM-DD HH:MM:SS\t<テキスト>\n
+    Format: YYYY-MM-DD HH:MM:SS\t<text>\n
     """
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"{timestamp}\t{text}\n"
@@ -115,9 +115,9 @@ def save_transcript(text: str) -> None:
 
 def save_transcript_jsonl(record: dict) -> None:
     """
-    メタデータ付き文字起こし結果を JSONL に 1 行追記する。
+    Append a transcription result with metadata to JSONL as one line.
 
-    キー例: received_at, finished_at, duration_s, inference_s, model, language, text
+    Example keys: received_at, finished_at, duration_s, inference_s, model, language, text
     """
     with open(TRANSCRIPT_JSONL, "a", encoding="utf-8") as f:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -125,18 +125,18 @@ def save_transcript_jsonl(record: dict) -> None:
 
 async def forward_to_inference(wav_bytes: bytes, filename: str) -> dict:
     """
-    wav バイト列を推論サーバーへ転送し、結果を返す。
+    Forward WAV bytes to the inference server and return the result.
 
     Args:
-        wav_bytes: WAV ファイルのバイト列
-        filename : 元のファイル名（ログ用）
+        wav_bytes: WAV file bytes
+        filename : original filename (for logging)
 
     Returns:
-        推論サーバーからのレスポンス dict
+        Response dict from the inference server
         {"text": str, "language": str, "duration_s": float}
 
     Raises:
-        HTTPException: 推論サーバーとの通信失敗時
+        HTTPException: on communication failure with the inference server
     """
     try:
         async with httpx.AsyncClient(timeout=INFERENCE_TIMEOUT) as client:
@@ -165,11 +165,11 @@ async def forward_to_inference(wav_bytes: bytes, filename: str) -> dict:
 
 async def send_to_raspi(text: str) -> bool:
     """
-    文字起こし結果を Raspi へ HTTP POST する。
+    HTTP POST the transcription result to Raspi.
 
     Returns:
-        送信成功なら True、失敗なら False
-        （送信失敗はログに残すが、呼び出し元には例外を投げない）
+        True on success, False on failure
+        (failure is logged but no exception is raised to the caller)
     """
     try:
         async with httpx.AsyncClient(timeout=RASPI_TIMEOUT) as client:
@@ -187,43 +187,43 @@ async def send_to_raspi(text: str) -> bool:
         return False
 
 # ============================================================
-# エンドポイント
+# Endpoints
 # ============================================================
 
 @app.get("/health")
 async def health_check() -> JSONResponse:
-    """死活確認エンドポイント。"""
+    """Health check endpoint."""
     return JSONResponse({"status": "ok"})
 
 
 @app.post("/audio")
 async def receive_audio(file: UploadFile = File(...)) -> JSONResponse:
     """
-    Raspi から WAV ファイルを受け取り、パイプラインを実行する。
+    Receive a WAV file from Raspi and run the pipeline.
 
-    処理フロー:
-      1. wav 受信
-      2. 推論サーバー(8001)へ転送
-      3. text を受け取る
-      4. txt 追記保存
-      5. Raspi へ送信
+    Processing flow:
+      1. Receive wav
+      2. Forward to inference server (8001)
+      3. Receive text
+      4. Append to txt file
+      5. Send to Raspi
 
     Args:
-        file: WAV ファイル（16kHz / 16bit / モノラル）
+        file: WAV file (16kHz / 16bit / mono)
 
     Returns:
         {
-            "text": "文字起こし結果",
+            "text": "transcription result",
             "duration_s": 1.23,
             "raspi_sent": true
         }
     """
-    # ── wav 受信 ──────────────────────────────────────────────
+    # ── Receive wav ───────────────────────────────────────────
     received_at = datetime.datetime.now()
     wav_bytes = await file.read()
     logger.info(f"Received audio: {file.filename} ({len(wav_bytes)} bytes)")
 
-    # ── wav 保存 ──────────────────────────────────────────────
+    # ── Save wav ──────────────────────────────────────────────
     original = file.filename or "audio.wav"
     audio_path = AUDIO_DIR / f"{received_at.strftime('%Y%m%d_%H%M%S')}_{Path(original).name}"
     try:
@@ -233,7 +233,7 @@ async def receive_audio(file: UploadFile = File(...)) -> JSONResponse:
     except Exception as e:
         logger.error(f"Failed to save audio: {e}")
 
-    # ── 推論サーバーへ転送 ────────────────────────────────────
+    # ── Forward to inference server ───────────────────────────
     result = await forward_to_inference(wav_bytes, file.filename or "audio.wav")
     finished_at = datetime.datetime.now()
     text = result.get("text", "").strip()
@@ -244,7 +244,7 @@ async def receive_audio(file: UploadFile = File(...)) -> JSONResponse:
 
     logger.info(f"Transcribed: '{text}' ({duration_s:.2f}s)")
 
-    # 空文字（無音・雑音）は保存・転送しない
+    # Empty string (silence or noise) — skip save and forward
     if not text:
         logger.info("Empty transcription — skipping save and Raspi send")
         return JSONResponse({
@@ -253,7 +253,7 @@ async def receive_audio(file: UploadFile = File(...)) -> JSONResponse:
             "raspi_sent": False,
         })
 
-    # ── txt / jsonl 追記保存 ──────────────────────────────────
+    # ── Append to txt / jsonl ─────────────────────────────────
     try:
         save_transcript(text)
         save_transcript_jsonl({
@@ -266,10 +266,10 @@ async def receive_audio(file: UploadFile = File(...)) -> JSONResponse:
             "text": text,
         })
     except Exception as e:
-        # 保存失敗はログに残すが処理は続行する
+        # Log save failure but continue processing
         logger.error(f"Failed to save transcript: {e}")
 
-    # ── Raspi へ送信 ──────────────────────────────────────────
+    # ── Send to Raspi ─────────────────────────────────────────
     raspi_sent = await send_to_raspi(text) if RASPI_URL else False
 
     return JSONResponse({
@@ -281,7 +281,7 @@ async def receive_audio(file: UploadFile = File(...)) -> JSONResponse:
 
 @app.post("/reset_context")
 async def reset_context() -> JSONResponse:
-    """推論サーバーの initial_prompt 用直前テキストをクリアする(転送のみ)。"""
+    """Clear the previous text for inference server initial_prompt (forward only)."""
     try:
         async with httpx.AsyncClient(timeout=INFERENCE_TIMEOUT) as client:
             response = await client.post(f"{INFERENCE_BASE_URL}/reset_context")
@@ -307,9 +307,9 @@ async def reset_context() -> JSONResponse:
 @app.post("/image")
 async def receive_image(file: UploadFile = File(...)) -> JSONResponse:
     """
-    Raspi から画像を受け取り、タイムスタンプ付きで保存する。
+    Receive an image from Raspi and save it with a timestamp.
 
-    保存名: YYYYMMDD_HHMMSS_<元ファイル名>
+    Save name: YYYYMMDD_HHMMSS_<original filename>
     """
     image_bytes = await file.read()
     original = file.filename or "image.jpg"
@@ -328,7 +328,7 @@ async def receive_image(file: UploadFile = File(...)) -> JSONResponse:
     })
 
 # ============================================================
-# エントリーポイント
+# Entry point
 # ============================================================
 
 if __name__ == "__main__":

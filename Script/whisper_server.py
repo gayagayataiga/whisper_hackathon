@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
-whisper_server.py - Jetson AGX Orin 推論サーバー（port 8001）
+whisper_server.py - Jetson AGX Orin inference server (port 8001)
 
-アーキテクチャ:
-  受け子サーバー(8000)
+Architecture:
+  Receiver server (8000)
        ↓ HTTP POST(wav)
-  推論サーバー(8001) ← このファイル
+  Inference server (8001) ← this file
        ↓ HTTP Response(text)
-  受け子サーバー(8000)
-       ├─ タイムスタンプ付き txt 追記保存
+  Receiver server (8000)
+       ├─ Append to txt file with timestamp
        └─ HTTP POST(text) → Raspi
 
-エンドポイント:
-  POST /transcribe     : wav バイト列を受け取り文字起こし結果を返す
-  POST /reset_context  : initial_prompt 用の直前テキスト(_previous_text)をクリア
-  GET  /health         : サーバー死活確認（VRAM / コンテキスト長 情報付き）
+Endpoints:
+  POST /transcribe     : Receive WAV bytes and return transcription result
+  POST /reset_context  : Clear the previous text (_previous_text) used for initial_prompt
+  GET  /health         : Server health check (with VRAM / context length info)
 """
 
 import ctypes
@@ -32,33 +32,33 @@ from fastapi.responses import JSONResponse
 from faster_whisper import WhisperModel
 
 # ============================================================
-# 設定パラメータ
+# Configuration parameters
 # ============================================================
 
 INFERENCE_PORT   = 8001
 
 # ── Faster-Whisper ────────────────────────────────────────────
 WHISPER_MODEL_SIZE = "large-v3"
-WHISPER_DEVICE     = "cuda"      # Jetson AGX Orin の GPU を使用
-WHISPER_COMPUTE    = "float16"   # Tensor Core 活用
-WHISPER_LANGUAGE   = "en"        # 英語固定
+WHISPER_DEVICE     = "cuda"      # Use Jetson AGX Orin GPU
+WHISPER_COMPUTE    = "float16"   # Leverage Tensor Cores
+WHISPER_LANGUAGE   = "en"        # English only
 WHISPER_BEAM_SIZE  = 5
 WHISPER_BEST_OF    = 5
 WHISPER_TEMPERATURE = 0.0
 WHISPER_NO_SPEECH_THRESHOLD         = 0.6
 WHISPER_COMPRESSION_RATIO_THRESHOLD = 2.4
 
-# ── コンテキスト保持 ──────────────────────────────────────────
-# Whisper の initial_prompt に直前の認識テキストを渡して固有名詞の精度を維持する。
-# uvicorn --workers 1（デフォルト）で動かす限りスレッドセーフ。
+# ── Context retention ─────────────────────────────────────────
+# Pass the previous recognition text to Whisper's initial_prompt to maintain accuracy for proper nouns.
+# Thread-safe as long as uvicorn runs with --workers 1 (default).
 INITIAL_PROMPT_MAX_CHARS = 200
 
-# ── 音声フォーマット ──────────────────────────────────────────
-EXPECTED_SAMPLE_RATE = 16000  # Raspi 側と合わせる
+# ── Audio format ──────────────────────────────────────────────
+EXPECTED_SAMPLE_RATE = 16000  # Match the Raspi side
 
 # ============================================================
-# VRAM ユーティリティ
-# Jetson は統合メモリのため NVML が非対応 → cudaMemGetInfo を直接呼ぶ
+# VRAM utility
+# Jetson uses unified memory so NVML is not supported → call cudaMemGetInfo directly
 # ============================================================
 
 _libcudart = None
@@ -88,7 +88,7 @@ def get_vram_usage_mb() -> tuple[float, float]:
         return 0.0, 0.0
 
 # ============================================================
-# ロガー設定
+# Logger configuration
 # ============================================================
 
 logging.basicConfig(
@@ -99,18 +99,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ============================================================
-# アプリ初期化
+# App initialization
 # ============================================================
 
 app = FastAPI(title="Whisper Inference Server", version="2.0.0")
 
 whisper_model: Optional[WhisperModel] = None
 
-# コンテキスト保持: 直前の認識テキストをサーバー内に保持する
+# Context retention: keep the previous recognition text on the server
 _previous_text: str = ""
 
 # ============================================================
-# 起動イベント
+# Startup event
 # ============================================================
 
 @app.on_event("startup")
@@ -132,7 +132,7 @@ async def startup_event() -> None:
         sys.exit(1)
 
 # ============================================================
-# ヘルパー関数
+# Helper functions
 # ============================================================
 
 def wav_bytes_to_numpy(wav_bytes: bytes) -> np.ndarray:
@@ -140,19 +140,19 @@ def wav_bytes_to_numpy(wav_bytes: bytes) -> np.ndarray:
     audio, sample_rate = sf.read(buf, dtype="float32")
     if sample_rate != EXPECTED_SAMPLE_RATE:
         raise ValueError(
-            f"サンプルレートが想定外: {sample_rate}Hz（期待値: {EXPECTED_SAMPLE_RATE}Hz）"
+            f"Unexpected sample rate: {sample_rate}Hz (expected: {EXPECTED_SAMPLE_RATE}Hz)"
         )
     if audio.ndim == 2:
         audio = audio.mean(axis=1)
     return audio
 
 # ============================================================
-# エンドポイント
+# Endpoints
 # ============================================================
 
 @app.get("/health")
 async def health_check() -> JSONResponse:
-    """死活確認。モデルロード状態と VRAM 使用量を返す。"""
+    """Health check. Returns model load status and VRAM usage."""
     vram_used, vram_total = get_vram_usage_mb()
     return JSONResponse({
         "status": "ok",
@@ -167,11 +167,11 @@ async def health_check() -> JSONResponse:
 @app.post("/transcribe")
 async def transcribe(file: UploadFile = File(...)) -> JSONResponse:
     """
-    WAV ファイルを受け取り、文字起こし結果を返す。
+    Receive a WAV file and return the transcription result.
 
     Returns:
         {
-            "text": "文字起こし結果",
+            "text": "transcription result",
             "language": "en",
             "duration_s": 1.23,
             "inference_s": 0.45,
@@ -238,12 +238,13 @@ async def transcribe(file: UploadFile = File(...)) -> JSONResponse:
 
 @app.post("/reset_context")
 async def reset_context() -> JSONResponse:
-    """initial_prompt 用の直前テキスト(_previous_text)をクリアする。
+    """Clear the previous text (_previous_text) used for initial_prompt.
 
-    Note: /transcribe の read-modify-write 中に /reset_context が走ると
-    reset 効果が失われる race がある(transcribe 側で旧値を read 済みの
-    ローカル変数が後で write back されるため)。Raspi 駆動の逐次運用前提
-    なのでほぼ起きず許容。厳密にしたい場合は asyncio.Lock を導入する。
+    Note: If /reset_context is called during a read-modify-write in /transcribe,
+    there is a race condition where the reset effect is lost (because the transcribe
+    side has already read the old value into a local variable that is written back later).
+    This is acceptable since sequential operation driven by Raspi is assumed.
+    To make it strict, introduce asyncio.Lock.
     """
     global _previous_text
     old_len = len(_previous_text)
@@ -253,7 +254,7 @@ async def reset_context() -> JSONResponse:
 
 
 # ============================================================
-# エントリーポイント
+# Entry point
 # ============================================================
 
 if __name__ == "__main__":

@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """
-turbo 専用 ASR スクリプト
+turbo-only ASR script
 
-Whisper turbo（large-v3 蒸留）で文字起こしし、WER・RTF・VRAM(RSS) を計測。
-評価用ベンチマークの推薦モデルである turbo を即座に試せる。
+Transcribes with Whisper turbo (large-v3 distillation) and measures WER, RTF,
+and VRAM (RSS). Lets you quickly try turbo, the recommended model in the benchmark.
 
-使い方:
-    # LibriSpeech 全 73 サンプルで評価
+Usage:
+    # Evaluate on all 73 LibriSpeech samples
     python Script/benchmark/turbo_run.py
 
-    # サンプル数を絞る
+    # Reduce number of samples
     python Script/benchmark/turbo_run.py --n 10
 
-    # 自前の音声ファイルで文字起こし
+    # Transcribe a custom audio file
     python Script/benchmark/turbo_run.py --audio path/to/audio.wav
 
-    # 標準入力からファイルパスを受け取る（ファイル名一行に1つ）
+    # Read file paths from stdin (one filename per line)
     ls *.wav | python Script/benchmark/turbo_run.py --stdin
 """
 
@@ -45,11 +45,11 @@ DEVICE       = "cuda"
 
 
 # ─────────────────────────────────────────────
-# メモリ計測（Jetson の unified memory に対応）
+# Memory measurement (supports Jetson unified memory)
 # ─────────────────────────────────────────────
 
 def proc_rss_mb() -> float:
-    """プロセスの実メモリ使用量（Jetson で最も正確）"""
+    """Actual process memory usage (most accurate metric on Jetson)"""
     with open(f"/proc/{os.getpid()}/status") as f:
         for line in f:
             if line.startswith("VmRSS:"):
@@ -59,7 +59,7 @@ def proc_rss_mb() -> float:
 
 _libcudart = None
 def cuda_used_mb() -> float:
-    """CUDA cudaMemGetInfo（Jetson では過小評価される。参考値）"""
+    """CUDA cudaMemGetInfo (underestimates on Jetson; reference value only)"""
     global _libcudart
     try:
         if _libcudart is None:
@@ -73,7 +73,7 @@ def cuda_used_mb() -> float:
 
 
 # ─────────────────────────────────────────────
-# 音声デコード（av 使用）
+# Audio decoding (using av)
 # ─────────────────────────────────────────────
 
 def decode_audio(src: bytes) -> np.ndarray:
@@ -126,18 +126,18 @@ def load_librispeech(n: int) -> list[dict]:
 
 
 # ─────────────────────────────────────────────
-# メイン
+# Main
 # ─────────────────────────────────────────────
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Whisper turbo 専用 ASR ベンチマーク")
-    parser.add_argument("--audio",  nargs="+", help="音声ファイル（複数可）")
-    parser.add_argument("--stdin",  action="store_true", help="標準入力からファイルパスを読む")
-    parser.add_argument("--n",      type=int, default=73, help="LibriSpeech サンプル数（default: 73）")
-    parser.add_argument("--save",   action="store_true", help="結果を results/en/ に JSON 保存")
+    parser = argparse.ArgumentParser(description="Whisper turbo-only ASR benchmark")
+    parser.add_argument("--audio",  nargs="+", help="Audio files (multiple accepted)")
+    parser.add_argument("--stdin",  action="store_true", help="Read file paths from stdin")
+    parser.add_argument("--n",      type=int, default=73, help="Number of LibriSpeech samples (default: 73)")
+    parser.add_argument("--save",   action="store_true", help="Save results as JSON under results/en/")
     args = parser.parse_args()
 
-    # ── 入力決定 ─────────────────────────────────────────────
+    # ── Determine input ──────────────────────────────────────
     audio_paths: list[str] = []
     if args.stdin:
         audio_paths = [line.strip() for line in sys.stdin if line.strip()]
@@ -169,7 +169,7 @@ def main() -> None:
         total_dur = sum(s["duration"] for s in samples)
         print(f"Samples        : {len(samples)} (LibriSpeech)  total={total_dur:.1f}s")
 
-    # ── モデルロード（ロード直前の RSS を測ってモデル本体だけを切り出す）─
+    # ── Model load (measure RSS just before loading to isolate model-only footprint) ──
     from faster_whisper import WhisperModel
     gc.collect()
     rss_before_load  = proc_rss_mb()
@@ -181,9 +181,9 @@ def main() -> None:
     load_time = time.monotonic() - t0
     rss_after_load = proc_rss_mb()
     print(f"  Loaded in {load_time:.1f}s")
-    print(f"  RSS after load : {rss_after_load:.0f} MB  (+{rss_after_load - rss_before_load:.0f} MB ← モデル本体)")
+    print(f"  RSS after load : {rss_after_load:.0f} MB  (+{rss_after_load - rss_before_load:.0f} MB <- model body)")
 
-    # ── 推論 ─────────────────────────────────────────────────
+    # ── Inference ────────────────────────────────────────────
     print(f"\nTranscribing {len(samples)} samples ...\n")
     print(f"  {'#':>3}  {'name':<28} {'dur':>6} {'time':>6} {'RTF':>5}  {'WER':>6}  text")
     print("  " + "-" * 110)
@@ -226,29 +226,29 @@ def main() -> None:
     rss_after_run = proc_rss_mb()
     cuda_peak     = cuda_used_mb()
 
-    # ── 集計 ─────────────────────────────────────────────────
+    # ── Aggregation ──────────────────────────────────────────
     print("\n" + "=" * 70)
     print(f"  RESULTS  ({len(samples)} samples)")
     print("=" * 70)
 
     avg_elapsed = sum(elapsed_list) / len(elapsed_list)
     avg_rtf     = sum(rtf_list)     / len(rtf_list)
-    print(f"  推論時間     : 合計={sum(elapsed_list):.1f}s  平均={avg_elapsed:.2f}s/sample")
-    print(f"  RTF          : 平均={avg_rtf:.3f}  ({1/avg_rtf:.1f}x リアルタイム)")
+    print(f"  Inference time : total={sum(elapsed_list):.1f}s  avg={avg_elapsed:.2f}s/sample")
+    print(f"  RTF            : avg={avg_rtf:.3f}  ({1/avg_rtf:.1f}x real-time)")
 
     if wer_list:
         avg_wer = sum(wer_list) / len(wer_list)
         exact_n = sum(1 for w in wer_list if w == 0.0)
-        print(f"  WER          : 平均={avg_wer*100:.2f}%  完全一致={exact_n}/{len(wer_list)} ({exact_n/len(wer_list)*100:.0f}%)")
+        print(f"  WER            : avg={avg_wer*100:.2f}%  exact={exact_n}/{len(wer_list)} ({exact_n/len(wer_list)*100:.0f}%)")
 
     print()
-    print(f"  VRAM (RSS)   : 起動直後={rss_initial:.0f} → ロード前={rss_before_load:.0f} → ロード後={rss_after_load:.0f} → 推論ピーク={peak_rss:.0f} MB")
-    print(f"               モデル本体  : +{rss_after_load - rss_before_load:.0f} MB（ロード前後の差）")
-    print(f"               推論ピーク  : +{peak_rss - rss_before_load:.0f} MB ← 実用上の必要VRAM")
-    print(f"  VRAM (CUDA)  : 推論ピーク={cuda_peak:.0f} MB（Jetson では過小評価。参考値）")
+    print(f"  VRAM (RSS)   : startup={rss_initial:.0f} -> before load={rss_before_load:.0f} -> after load={rss_after_load:.0f} -> inference peak={peak_rss:.0f} MB")
+    print(f"               model body  : +{rss_after_load - rss_before_load:.0f} MB (before/after load difference)")
+    print(f"               inference peak: +{peak_rss - rss_before_load:.0f} MB <- practical VRAM requirement")
+    print(f"  VRAM (CUDA)  : inference peak={cuda_peak:.0f} MB (underestimates on Jetson; reference value)")
     print("=" * 70)
 
-    # ── 保存 ─────────────────────────────────────────────────
+    # ── Save ─────────────────────────────────────────────────
     if args.save:
         RESULTS_DIR.mkdir(parents=True, exist_ok=True)
         ts   = datetime.now().strftime("%Y%m%d_%H%M%S")

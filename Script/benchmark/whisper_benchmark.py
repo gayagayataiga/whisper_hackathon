@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-Whisper 英語 ASR ベンチマーク（faster-whisper × LibriSpeech WER）
+Whisper English ASR benchmark (faster-whisper × LibriSpeech WER)
 =================================================================
-追加インストール: uv pip install --python .venv/bin/python datasets
+Additional installation: uv pip install --python .venv/bin/python datasets
 
-使い方:
-    python Script/benchmark/whisper_benchmark.py              # 全モデル、73サンプル
-    python Script/benchmark/whisper_benchmark.py --n 10       # 10サンプルで速く確認
+Usage:
+    python Script/benchmark/whisper_benchmark.py              # all models, 73 samples
+    python Script/benchmark/whisper_benchmark.py --n 10       # quick check with 10 samples
     python Script/benchmark/whisper_benchmark.py --models tiny.en large-v3
     python Script/benchmark/whisper_benchmark.py --audio your.wav
     python Script/benchmark/whisper_benchmark.py --list
 
-保存先:
-    results/en/{timestamp}_{model_name}.json   # モデルごと（全サンプルの REF/HYP/WER）
-    results/en/{timestamp}_summary.json        # 全モデル集計
+Output paths:
+    results/en/{timestamp}_{model_name}.json   # per model (REF/HYP/WER for all samples)
+    results/en/{timestamp}_summary.json        # all-model aggregation
 """
 
 import argparse
@@ -43,7 +43,7 @@ SAMPLE_RATE = 16000
 
 
 # ─────────────────────────────────────────────
-# モデル定義
+# Model definitions
 # ─────────────────────────────────────────────
 
 @dataclass
@@ -55,20 +55,20 @@ class ModelConfig:
 
 
 ALL_MODELS: list[ModelConfig] = [
-    ModelConfig("tiny.en",           "tiny.en",                           description="39M  最軽量・英語特化"),
-    ModelConfig("base.en",           "base.en",                           description="74M  軽量・英語特化"),
-    ModelConfig("small.en",          "small.en",                          description="244M バランス・英語特化"),
-    ModelConfig("medium.en",         "medium.en",                         description="769M 高精度・英語特化"),
-    ModelConfig("large-v2",          "large-v2",                          description="1.5B 旧世代大規模"),
-    ModelConfig("large-v3",          "large-v3",                          description="1.5B 最新世代大規模"),
-    ModelConfig("turbo",             "turbo",                             description="809M large-v3蒸留・高速"),
-    ModelConfig("distil-large-v3",   "distil-whisper/distil-large-v3-ct2",   description="0.8B 英語特化蒸留"),
-    ModelConfig("distil-large-v3.5", "distil-whisper/distil-large-v3.5-ct2", description="0.8B 英語特化蒸留・最新"),
+    ModelConfig("tiny.en",           "tiny.en",                           description="39M  lightest, English-only"),
+    ModelConfig("base.en",           "base.en",                           description="74M  lightweight, English-only"),
+    ModelConfig("small.en",          "small.en",                          description="244M balanced, English-only"),
+    ModelConfig("medium.en",         "medium.en",                         description="769M high accuracy, English-only"),
+    ModelConfig("large-v2",          "large-v2",                          description="1.5B previous-generation large"),
+    ModelConfig("large-v3",          "large-v3",                          description="1.5B latest-generation large"),
+    ModelConfig("turbo",             "turbo",                             description="809M large-v3 distilled, fast"),
+    ModelConfig("distil-large-v3",   "distil-whisper/distil-large-v3-ct2",   description="0.8B English-only distilled"),
+    ModelConfig("distil-large-v3.5", "distil-whisper/distil-large-v3.5-ct2", description="0.8B English-only distilled, latest"),
 ]
 
 
 # ─────────────────────────────────────────────
-# デバイス検出（torch を import しない）
+# Device detection (without importing torch)
 # ─────────────────────────────────────────────
 
 def _detect_device() -> tuple[str, str]:
@@ -96,7 +96,7 @@ DEVICE, COMPUTE_TYPE = _detect_device()
 
 
 # ─────────────────────────────────────────────
-# 音声デコード（av 使用・soundfile 不要）
+# Audio decoding (using av, no soundfile needed)
 # ─────────────────────────────────────────────
 
 def decode_audio(src: bytes) -> np.ndarray:
@@ -124,14 +124,14 @@ def decode_audio(src: bytes) -> np.ndarray:
 
 
 # ─────────────────────────────────────────────
-# データ準備
+# Data preparation
 # ─────────────────────────────────────────────
 
 def load_librispeech(n: int) -> list[dict]:
     try:
         from datasets import Audio, load_dataset
     except ImportError:
-        print("[Error] datasets 未インストール: uv pip install --python .venv/bin/python datasets",
+        print("[Error] datasets not installed: uv pip install --python .venv/bin/python datasets",
               file=sys.stderr)
         sys.exit(1)
 
@@ -140,7 +140,7 @@ def load_librispeech(n: int) -> list[dict]:
     ds = ds.cast_column("audio", Audio(decode=False))
     total = len(ds)
     n = min(n, total)
-    print(f"  {n}/{total} サンプルを使用\n")
+    print(f"  Using {n}/{total} samples\n")
 
     samples = []
     for i in range(n):
@@ -165,7 +165,7 @@ def load_audio_file(path: str) -> dict:
 
 
 # ─────────────────────────────────────────────
-# 推論
+# Inference
 # ─────────────────────────────────────────────
 
 @dataclass
@@ -177,10 +177,10 @@ class ModelResult:
     avg_elapsed_s: float
     avg_rtf: float
     avg_wer: Optional[float]
-    avg_vram_mb: float                    # 推論中のVRAM平均（参考値、累積影響あり）
-    vram_before_load_mb: float = 0.0      # モデルロード前のVRAM
-    vram_after_load_mb: float = 0.0       # モデルロード後のVRAM
-    model_footprint_mb: float = 0.0       # モデル単体のフットプリント = after - before
+    avg_vram_mb: float                    # average VRAM during inference (reference value, affected by accumulation)
+    vram_before_load_mb: float = 0.0      # VRAM before model load
+    vram_after_load_mb: float = 0.0       # VRAM after model load
+    model_footprint_mb: float = 0.0       # model-only footprint = after - before
     error: Optional[str] = None
     samples: list[dict] = field(default_factory=list)
 
@@ -252,7 +252,7 @@ def run_model(cfg: ModelConfig, samples: list[dict], timestamp: str) -> ModelRes
             samples             = per_samples,
         )
 
-        # モデルごとに即時保存（中断しても消えない）
+        # Save immediately per model (preserved even if interrupted)
         _save_model_json(result, timestamp, vram_total)
         return result
 
@@ -263,7 +263,7 @@ def run_model(cfg: ModelConfig, samples: list[dict], timestamp: str) -> ModelRes
 
 
 # ─────────────────────────────────────────────
-# 保存
+# Saving
 # ─────────────────────────────────────────────
 
 def _save_model_json(result: ModelResult, timestamp: str, vram_total: float) -> None:
@@ -319,13 +319,13 @@ def _save_summary_json(results: list[ModelResult], timestamp: str, n_samples: in
 
 
 # ─────────────────────────────────────────────
-# 表示
+# Display
 # ─────────────────────────────────────────────
 
 def print_results(results: list[ModelResult]) -> None:
     C = 88
     print("\n" + "=" * C)
-    print("RESULTS  (WER昇順)   RTF < 1.0 = リアルタイム以上")
+    print("RESULTS  (sorted by WER asc)   RTF < 1.0 = faster than real-time")
     print("=" * C)
 
     ok     = sorted([r for r in results if not r.error], key=lambda r: r.avg_wer or 999)
@@ -346,15 +346,15 @@ def print_results(results: list[ModelResult]) -> None:
 
 
 # ─────────────────────────────────────────────
-# メイン
+# Main
 # ─────────────────────────────────────────────
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Whisper 英語 ASR ベンチマーク（WER + RTF + VRAM）")
-    parser.add_argument("--audio",  help="自前音声ファイル（省略時は LibriSpeech）")
-    parser.add_argument("--n",      type=int, default=73, help="LibriSpeech サンプル数（default: 全件 73）")
-    parser.add_argument("--models", nargs="+", help="実行するモデル名（省略時は全モデル）")
-    parser.add_argument("--list",   action="store_true", help="モデル一覧を表示して終了")
+    parser = argparse.ArgumentParser(description="Whisper English ASR benchmark (WER + RTF + VRAM)")
+    parser.add_argument("--audio",  help="Custom audio file (defaults to LibriSpeech)")
+    parser.add_argument("--n",      type=int, default=73, help="Number of LibriSpeech samples (default: all 73)")
+    parser.add_argument("--models", nargs="+", help="Model names to run (defaults to all models)")
+    parser.add_argument("--list",   action="store_true", help="List available models and exit")
     args = parser.parse_args()
 
     if args.list:
@@ -382,7 +382,7 @@ def main() -> None:
             print(f"File not found: {args.audio}")
             sys.exit(1)
         samples = [load_audio_file(args.audio)]
-        print(f"Audio   : {args.audio}  ({samples[0]['duration']:.1f}s)  ※WER計測なし")
+        print(f"Audio   : {args.audio}  ({samples[0]['duration']:.1f}s)  *WER not measured")
     else:
         samples = load_librispeech(args.n)
         total_dur = sum(s["duration"] for s in samples)

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-combined_report_en.py - 英語 ASR ベンチマーク 複数ラン統合レポート
+combined_report_en.py - English ASR benchmark multi-run combined report
 
-results/en/ の全 summary JSON を読み込み、
-セッションをまたいだ WER・速度・総合スコアを集計する。
+Loads all summary JSON files from results/en/ and aggregates
+WER, speed, and combined scores across sessions.
 
-使い方:
+Usage:
     python Script/benchmark/combined_report_en.py
     python Script/benchmark/combined_report_en.py --model tiny.en large-v3 turbo
 """
@@ -28,17 +28,17 @@ MODEL_ORDER = [
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="英語 ASR 複数ラン統合レポート")
-    parser.add_argument("--model", nargs="+", dest="models", help="対象モデルを絞る")
+    parser = argparse.ArgumentParser(description="English ASR multi-run combined report")
+    parser.add_argument("--model", nargs="+", dest="models", help="Restrict to specific models")
     args = parser.parse_args()
 
     if not RESULTS_DIR.exists():
-        print(f"[Error] {RESULTS_DIR} が存在しません。先に whisper_benchmark.py を実行してください。")
+        print(f"[Error] {RESULTS_DIR} does not exist. Run whisper_benchmark.py first.")
         return
 
     summary_files = sorted(RESULTS_DIR.glob("*_summary.json"))
     if not summary_files:
-        print(f"[Error] {RESULTS_DIR} に summary JSON がありません。")
+        print(f"[Error] No summary JSON found in {RESULTS_DIR}.")
         return
 
     print(f"Found {len(summary_files)} session(s):")
@@ -46,7 +46,7 @@ def main() -> None:
         print(f"  {f.name}")
     print()
 
-    # ─── 全セッションのサンプルをモデル別に集約 ──────────────────
+    # ─── Aggregate samples from all sessions per model ───────────
 
     # model_name -> list of per-sample dicts
     all_samples: dict[str, list[dict]] = {}
@@ -75,14 +75,14 @@ def main() -> None:
                 all_samples[name] = []
             all_samples[name].extend(data.get("samples", []))
 
-    # ─── モデルフィルタ ──────────────────────────────────────────
+    # ─── Model filter ────────────────────────────────────────────
 
     target = args.models if args.models else MODEL_ORDER
     target = [m for m in target if m in all_samples]
     if not target:
         target = list(all_samples.keys())
 
-    # ─── 集計 ────────────────────────────────────────────────────
+    # ─── Aggregation ─────────────────────────────────────────────
 
     rows: list[dict] = []
 
@@ -92,7 +92,7 @@ def main() -> None:
         if n == 0:
             continue
 
-        # REF/HYP から WER を再計算（whisper-normalizer 適用）
+        # Recalculate WER from REF/HYP (applying whisper-normalizer)
         wer_list = []
         for s in samples:
             if s.get("ref") and s.get("hyp") is not None:
@@ -108,7 +108,7 @@ def main() -> None:
         avg_vram     = sum(vram_list)    / len(vram_list)     if vram_list    else 0.0
         exact_n      = sum(1 for w in wer_list if w == 0.0)
 
-        # WER 分布
+        # WER distribution
         wer_pct_list = [w * 100 for w in wer_list]
         wer_p50      = sorted(wer_pct_list)[len(wer_pct_list) // 2] if wer_pct_list else 0.0
         wer_p90      = sorted(wer_pct_list)[int(len(wer_pct_list) * 0.9)] if wer_pct_list else 0.0
@@ -127,10 +127,10 @@ def main() -> None:
         })
 
     if not rows:
-        print("[Error] 集計できるデータがありませんでした。")
+        print("[Error] No data available to aggregate.")
         return
 
-    # ─── 表示 ────────────────────────────────────────────────────
+    # ─── Display ─────────────────────────────────────────────────
 
     W = 96
 
@@ -139,7 +139,7 @@ def main() -> None:
           f"total samples per model: {max(r['n_samples'] for r in rows)}")
     print("=" * W)
     print(f"  {'Model':<26} {'avg WER':>8}  {'p50':>6}  {'p90':>6}  "
-          f"{'完全一致':>10}  {'RTF':>6}  {'VRAM':>7}")
+          f"{'Exact':>10}  {'RTF':>6}  {'VRAM':>7}")
     print("-" * W)
 
     for r in sorted(rows, key=lambda x: x["avg_wer_pct"] or 999):
@@ -151,11 +151,11 @@ def main() -> None:
               f"{exact_s:>12}  {r['avg_rtf']:>6.3f}  {vram_s}")
 
     print("=" * W)
-    print(f"\n  RTF < 1.0 = リアルタイム以上  WER p50/p90 = 中央値/上位10%閾値\n")
+    print(f"\n  RTF < 1.0 = faster than real-time  WER p50/p90 = median/90th-percentile threshold\n")
 
-    # ─── 速度ランキング ──────────────────────────────────────────
+    # ─── Speed ranking ───────────────────────────────────────────
 
-    print("速度ランキング (avg_rtf 昇順):")
+    print("Speed ranking (avg_rtf ascending):")
     print("-" * W)
     for rank, r in enumerate(sorted(rows, key=lambda x: x["avg_rtf"]), 1):
         wer_s = f"WER={r['avg_wer_pct']:.1f}%" if r["avg_wer_pct"] is not None else "WER=N/A"
@@ -163,11 +163,11 @@ def main() -> None:
               f"avg={r['avg_elapsed_s']:.2f}s  {wer_s}")
     print()
 
-    # ─── 総合スコア（精度 × 速度） ──────────────────────────────
+    # ─── Combined score (accuracy × speed) ──────────────────────
 
     scoreable = [r for r in rows if r["avg_wer_pct"] is not None and r["avg_rtf"] > 0]
     if scoreable:
-        print("総合スコア  (1 - WER) / RTF  ← 速くて正確なほど高い:")
+        print("Combined score  (1 - WER) / RTF  ← higher means faster and more accurate:")
         print("-" * W)
         for r in sorted(scoreable,
                          key=lambda x: (1 - x["avg_wer_pct"] / 100) / x["avg_rtf"],
@@ -176,19 +176,19 @@ def main() -> None:
             print(f"  {r['model_name']:<26}  score={score:6.1f}  "
                   f"(WER={r['avg_wer_pct']:.1f}%  RTF={r['avg_rtf']:.3f})")
         best = max(scoreable, key=lambda x: (1 - x["avg_wer_pct"] / 100) / x["avg_rtf"])
-        print(f"\n  ★ 推薦モデル: {best['model_name']}  "
+        print(f"\n  Recommended model: {best['model_name']}  "
               f"(WER={best['avg_wer_pct']:.1f}%  RTF={best['avg_rtf']:.3f})\n")
 
-    # ─── セッション一覧 ──────────────────────────────────────────
+    # ─── Session list ────────────────────────────────────────────
 
-    print("セッション一覧:")
+    print("Sessions:")
     print("-" * W)
     for s in session_meta:
         print(f"  {s['timestamp']}  n={s['n_samples']}  "
               f"device={s['device']}  compute={s['compute_type']}")
     print()
 
-    # ─── JSON 保存 ────────────────────────────────────────────────
+    # ─── JSON save ───────────────────────────────────────────────
 
     ts_out   = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_path = RESULTS_DIR / f"{ts_out}_combined_report.json"

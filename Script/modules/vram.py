@@ -11,7 +11,7 @@ def _get_libcudart():
 
 
 def get_vram_usage_mb() -> tuple[float, float]:
-    """(used_mb, total_mb) を返す。Jetson の統合メモリ対応版。"""
+    """Returns (used_mb, total_mb). Supports Jetson unified memory."""
     try:
         lib = _get_libcudart()
         free  = ctypes.c_size_t()

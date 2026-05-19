@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-combined_report.py - 複数回ストレステストの結果を統合して正答率・速度を集計する。
+combined_report.py - Aggregate accuracy rate and speed across multiple stress-test runs.
 
-全 summary JSON を自動検出し、全 run を結合して集計する。
+Automatically detects all summary JSON files and merges all runs for aggregation.
 """
 
 import json
@@ -15,7 +15,7 @@ AUDIO_DURATION_S = 3.19   # BASIC5000_0001.wav
 
 
 # ============================================================
-# Levenshtein 編集距離
+# Levenshtein edit distance
 # ============================================================
 
 def levenshtein(a: str, b: str) -> int:
@@ -39,7 +39,7 @@ def levenshtein(a: str, b: str) -> int:
 
 
 # ============================================================
-# 全 summary を読み込んで run をモデル別に集約
+# Load all summaries and aggregate runs per model
 # ============================================================
 
 summary_files = sorted(RESULTS_DIR.glob("*_summary.json"))
@@ -60,7 +60,7 @@ for sf in summary_files:
         if model_size in data:
             all_runs[model_size].extend(data[model_size]["runs"])
 
-# large-v3 の最頻出テキストを正解とする
+# Use the most frequent large-v3 output as the reference
 lv3_texts = [r["text"] for r in all_runs["large-v3"]]
 reference = Counter(lv3_texts).most_common(1)[0][0]
 ref_len   = max(len(reference), 1)
@@ -68,7 +68,7 @@ ref_len   = max(len(reference), 1)
 print(f"Reference (large-v3 mode, n={len(lv3_texts)}): {reference!r}\n")
 
 # ============================================================
-# 集計
+# Aggregation
 # ============================================================
 
 rows: list[dict] = []
@@ -115,7 +115,7 @@ for model_size in MODEL_ORDER:
     })
 
 # ============================================================
-# 表示
+# Display
 # ============================================================
 
 W = 82
@@ -123,7 +123,7 @@ print("=" * W)
 print(f"  Combined results: {len(summary_files)} sessions × {len(all_runs['large-v3'])} runs / model")
 print("=" * W)
 print(
-    f"  {'Model':<12}  {'正答率':>6}  {'文字精度':>6}  {'CER':>5}  "
+    f"  {'Model':<12}  {'Accuracy':>6}  {'CharAcc':>6}  {'CER':>5}  "
     f"{'avg_time':>8}  {'RTF':>5}  {'avg_VRAM':>9}"
 )
 print("-" * W)
@@ -142,50 +142,50 @@ for r in rows:
 print("=" * W)
 
 print()
-print(f"  RTF = inference_time / audio_duration ({AUDIO_DURATION_S}s).  RTF < 1.0 = リアルタイム以下")
+print(f"  RTF = inference_time / audio_duration ({AUDIO_DURATION_S}s).  RTF < 1.0 = faster than real-time")
 print()
 
-# ── 誤りの詳細 ──────────────────────────────────────────────
-print("誤りの詳細:")
+# ── Error details ────────────────────────────────────────────
+print("Error details:")
 print("-" * W)
 any_error = False
 for r in rows:
     if r["mode_dist"] > 0:
         any_error = True
         print(f"  {r['model']:<12}  edit_dist={r['mode_dist']}  CER={r['avg_cer']*100:.1f}%")
-        print(f"    正解: {reference!r}")
-        print(f"    出力: {r['mode_text']!r}")
+        print(f"    REF: {reference!r}")
+        print(f"    HYP: {r['mode_text']!r}")
         ref_p = reference.ljust(max(len(reference), len(r["mode_text"])))
         hyp_p = r["mode_text"].ljust(max(len(reference), len(r["mode_text"])))
         for i, (c_ref, c_hyp) in enumerate(zip(ref_p, hyp_p)):
             if c_ref != c_hyp:
-                c_ref_d = c_ref.strip() or "(なし)"
-                c_hyp_d = c_hyp.strip() or "(なし)"
+                c_ref_d = c_ref.strip() or "(none)"
+                c_hyp_d = c_hyp.strip() or "(none)"
                 print(f"    pos {i:2d}: {c_ref_d!r} → {c_hyp_d!r}")
         print()
 if not any_error:
-    print("  (誤りなし)")
+    print("  (no errors)")
 
-# ── 速度ランキング ───────────────────────────────────────────
-print("速度ランキング (avg_time 昇順):")
+# ── Speed ranking ────────────────────────────────────────────
+print("Speed ranking (avg_time ascending):")
 print("-" * W)
 speed_ranked = sorted(rows, key=lambda x: x["avg_time_s"])
 for rank, r in enumerate(speed_ranked, 1):
-    acc_str = f"正答率 {r['exact_rate']*100:.0f}%  文字精度 {r['char_acc']*100:.1f}%"
+    acc_str = f"accuracy {r['exact_rate']*100:.0f}%  char_acc {r['char_acc']*100:.1f}%"
     print(f"  #{rank}  {r['model']:<12}  {r['avg_time_s']:.2f}s (RTF={r['avg_rtf']:.2f})  {acc_str}")
 print()
 
-# ── 総合スコア（正確さ × 速度） ──────────────────────────────
-# スコア = 文字精度 / avg_time_s  (高いほど速くて正確)
-print("総合スコア (文字精度 / avg_time — 速さと精度のバランス):")
+# ── Combined score (accuracy × speed) ────────────────────────
+# score = char_acc / avg_time_s  (higher = faster and more accurate)
+print("Combined score (char_acc / avg_time — balance of speed and accuracy):")
 print("-" * W)
 for r in sorted(rows, key=lambda x: x["char_acc"] / x["avg_time_s"], reverse=True):
     score = r["char_acc"] / r["avg_time_s"]
-    print(f"  {r['model']:<12}  score={score:.2f}  (文字精度={r['char_acc']*100:.1f}%  avg={r['avg_time_s']:.2f}s)")
+    print(f"  {r['model']:<12}  score={score:.2f}  (char_acc={r['char_acc']*100:.1f}%  avg={r['avg_time_s']:.2f}s)")
 print()
 
 # ============================================================
-# JSON 保存
+# JSON save
 # ============================================================
 
 from datetime import datetime

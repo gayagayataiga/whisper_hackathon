@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-news_benchmark.py - news_audio 全ファイルを対象にモデル別ベンチマーク
+news_benchmark.py - Per-model benchmark across all news_audio files
 
-各モデルで同一の音声ファイル群を 1 回ずつ推論し、
-large-v3 を正解として CER・推論速度・VRAM を集計する。
+Each model runs inference once on the same set of audio files.
+CER, inference speed, and VRAM are aggregated using large-v3 as the reference.
 
-使い方:
-    python Script/news_benchmark.py            # ランダム 200 ファイル
-    python Script/news_benchmark.py --n 500    # ランダム N ファイル
-    python Script/news_benchmark.py --all      # 全 7696 ファイル（数時間）
-    python Script/news_benchmark.py --models tiny small large-v3  # モデル指定
+Usage:
+    python Script/news_benchmark.py            # 200 random files
+    python Script/news_benchmark.py --n 500    # N random files
+    python Script/news_benchmark.py --all      # all 7696 files (several hours)
+    python Script/news_benchmark.py --models tiny small large-v3  # specific models
 """
 
 import argparse
@@ -22,20 +22,20 @@ from pathlib import Path
 
 import numpy as np
 
-# Script/ を sys.path に追加
+# Add Script/ to sys.path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from modules.vram import get_vram_usage_mb
 from modules.whisper_runner import load_whisper_model, transcribe_audio
 
 # ============================================================
-# 定数
+# Constants
 # ============================================================
 
 AUDIO_DIR    = Path(__file__).parent.parent.parent / "music" / "news_audio"
 RESULTS_DIR  = Path(__file__).parent.parent.parent / "results" / "news"
 SAMPLE_RATE  = 16000
-SRC_RATE     = 48000    # JSUT は 48kHz
+SRC_RATE     = 48000    # JSUT is 48 kHz
 
 ALL_MODELS   = [
     "tiny",
@@ -56,11 +56,11 @@ DEFAULT_N    = 200
 
 
 # ============================================================
-# 音声読み込み（48kHz → 16kHz リサンプリング）
+# Audio loading (48 kHz -> 16 kHz resampling)
 # ============================================================
 
 def load_wav_16k(path: Path) -> tuple[np.ndarray, float]:
-    """WAV を float32 16kHz に変換して返す。duration_s も返す。"""
+    """Convert WAV to float32 at 16 kHz and return it along with duration_s."""
     with wave.open(str(path), "rb") as wf:
         src_rate = wf.getframerate()
         raw      = wf.readframes(wf.getnframes())
@@ -68,13 +68,13 @@ def load_wav_16k(path: Path) -> tuple[np.ndarray, float]:
     samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
 
     if src_rate != SAMPLE_RATE:
-        # polyphase リサンプリング（scipy 不要・整数比限定）
-        # 48000 → 16000: 1/3 ダウンサンプル
+        # Polyphase resampling (no scipy, integer ratio only)
+        # 48000 -> 16000: 1/3 downsample
         from_rate, to_rate = src_rate, SAMPLE_RATE
         import math
         gcd    = math.gcd(from_rate, to_rate)
         up, dn = to_rate // gcd, from_rate // gcd   # 1, 3
-        # シンプルな線形補間リサンプリング（精度より速度優先）
+        # Simple linear-interpolation resampling (speed over precision)
         orig_len    = len(samples)
         new_len     = int(orig_len * up / dn)
         old_indices = np.linspace(0, orig_len - 1, new_len)
@@ -85,7 +85,7 @@ def load_wav_16k(path: Path) -> tuple[np.ndarray, float]:
 
 
 # ============================================================
-# Levenshtein 編集距離
+# Levenshtein edit distance
 # ============================================================
 
 def levenshtein(a: str, b: str) -> int:
@@ -109,21 +109,21 @@ def levenshtein(a: str, b: str) -> int:
 
 
 # ============================================================
-# メイン
+# Main
 # ============================================================
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--all",    action="store_true", help="全ファイルを使う")
-    parser.add_argument("--n",      type=int, default=DEFAULT_N, help="サンプル数（--all 非指定時）")
-    parser.add_argument("--seed",   type=int, default=42,        help="乱数シード")
+    parser.add_argument("--all",    action="store_true", help="Use all files")
+    parser.add_argument("--n",      type=int, default=DEFAULT_N, help="Number of samples (when --all is not set)")
+    parser.add_argument("--seed",   type=int, default=42,        help="Random seed")
     parser.add_argument("--models", nargs="+", default=ALL_MODELS,
-                        help="使用モデルリスト（HF モデル ID も指定可）")
+                        help="List of models to use (HF model IDs accepted)")
     args = parser.parse_args()
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # ── ファイルリスト作成 ──────────────────────────────────────
+    # ── Build file list ──────────────────────────────────────────
     all_files = sorted(AUDIO_DIR.glob("*.wav"))
     if not all_files:
         sys.exit(f"[Error] No WAV files in {AUDIO_DIR}")
@@ -200,7 +200,7 @@ def main() -> None:
 
         model_results[model_size] = per_file
 
-        # モデル別途中結果を保存（中断しても消えない）
+        # Save per-model intermediate results (preserved even if interrupted)
         ckpt_path = RESULTS_DIR / f"{run_label}_{model_size.replace('-','_')}.json"
         ckpt_path.write_text(json.dumps({
             "model_size": model_size,
@@ -217,7 +217,7 @@ def main() -> None:
             pass
 
     # ============================================================
-    # 集計（large-v3 が完了している場合のみ CER 算出）
+    # Aggregation (CER is computed only when large-v3 is included)
     # ============================================================
 
     print("\n" + "=" * 70)
@@ -227,7 +227,7 @@ def main() -> None:
     ref_model = "large-v3"
     has_ref   = ref_model in model_results
 
-    # ファイル名 → large-v3 テキストのマップ
+    # Map: filename -> large-v3 text
     ref_map: dict[str, str] = {}
     if has_ref:
         for rec in model_results[ref_model]:
@@ -285,9 +285,9 @@ def main() -> None:
             "exact_rate":  round(exact_rate, 4) if exact_rate == exact_rate else None,
         })
 
-    # ── 表示 ─────────────────────────────────────────────────────
+    # ── Display ──────────────────────────────────────────────────
     W = 92
-    print(f"\n  {'Model':<38} {'正答率':>6} {'文字精度':>6} {'CER':>5}  {'avg_time':>8}  {'RTF':>5}  {'avg_VRAM':>9}")
+    print(f"\n  {'Model':<38} {'Accuracy':>6} {'CharAcc':>6} {'CER':>5}  {'avg_time':>8}  {'RTF':>5}  {'avg_VRAM':>9}")
     print("-" * W)
     for r in summary_rows:
         acc_str  = f"{r['exact_rate']*100:>5.1f}%" if r['exact_rate'] is not None else "  N/A "
@@ -299,26 +299,26 @@ def main() -> None:
         )
 
     print("=" * W)
-    print(f"\n  RTF < 1.0 = リアルタイム処理以下（{ref_model} 基準の CER）\n")
+    print(f"\n  RTF < 1.0 = faster than real-time  (CER relative to {ref_model})\n")
 
-    # ── 総合スコアと推薦 ─────────────────────────────────────────
+    # ── Combined score and recommendation ────────────────────────
     scoreable = [r for r in summary_rows if r["char_acc"] is not None]
     if scoreable:
-        print("総合スコア (文字精度 / avg_time):")
+        print("Combined score (char_acc / avg_time):")
         print("-" * W)
         for r in sorted(scoreable, key=lambda x: x["char_acc"] / x["avg_time_s"], reverse=True):
             score = r["char_acc"] / r["avg_time_s"]
             print(
                 f"  {r['model']:<38}  score={score:.2f}  "
-                f"(文字精度={r['char_acc']*100:.1f}%  avg={r['avg_time_s']:.2f}s)"
+                f"(char_acc={r['char_acc']*100:.1f}%  avg={r['avg_time_s']:.2f}s)"
             )
         print()
 
         best = max(scoreable, key=lambda x: x["char_acc"] / x["avg_time_s"])
-        print(f"  ★ 推薦モデル: {best['model']}  "
-              f"(文字精度={best['char_acc']*100:.1f}%  avg={best['avg_time_s']:.2f}s)")
+        print(f"  Recommended model: {best['model']}  "
+              f"(char_acc={best['char_acc']*100:.1f}%  avg={best['avg_time_s']:.2f}s)")
 
-    # ── JSON 保存 ────────────────────────────────────────────────
+    # ── JSON save ────────────────────────────────────────────────
     out_path = RESULTS_DIR / f"{run_label}_summary.json"
     out_data = {
         "timestamp":   timestamp,

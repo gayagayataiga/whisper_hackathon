@@ -1,13 +1,13 @@
 """
-英語 ASR 評価用のテキスト正規化と WER 計算
+Text normalization and WER calculation for English ASR evaluation
 
-OpenAI Whisper 公式の EnglishTextNormalizer を使用：
-  - 大文字小文字無視
-  - 句読点・記号削除
-  - 略語展開 (Mr. ↔ Mister)
-  - 数字表記統一 (ten ↔ 10, twenties ↔ 20s)
-  - 縮約形展開 (don't ↔ do not)
-依存: pip install whisper-normalizer
+Uses OpenAI Whisper's official EnglishTextNormalizer:
+  - case-insensitive
+  - removes punctuation and symbols
+  - expands abbreviations (Mr. <-> Mister)
+  - unifies number representations (ten <-> 10, twenties <-> 20s)
+  - expands contractions (don't <-> do not)
+Dependency: pip install whisper-normalizer
 """
 
 from typing import Optional
@@ -29,17 +29,17 @@ def _get_normalizer():
 
 
 def normalize(text: str) -> list[str]:
-    """英語テキストを正規化して単語リストを返す"""
+    """Normalize English text and return a list of words."""
     n = _get_normalizer()
     if n is not None:
         return n(text).split()
-    # フォールバック: 単純正規化
+    # Fallback: simple normalization
     import re
     return re.sub(r"[^\w\s']", "", text.lower()).split()
 
 
 def calc_wer(hyp: str, ref: str) -> float:
-    """単語誤り率 = 編集距離 / 参照語数"""
+    """Word error rate = edit distance / number of reference words"""
     hw, rw = normalize(hyp), normalize(ref)
     if not rw:
         return 0.0
@@ -53,7 +53,7 @@ def calc_wer(hyp: str, ref: str) -> float:
 
 
 def word_diff(hyp: str, ref: str) -> list[str]:
-    """正規化後の単語列を比較し、不一致箇所を返す"""
+    """Compare normalized word sequences and return the mismatched positions."""
     hw = normalize(hyp)
     rw = normalize(ref)
 
@@ -79,10 +79,10 @@ def word_diff(hyp: str, ref: str) -> list[str]:
                 errors.append(f"  subst  REF[{j-1}]={rw[j-1]!r:14s}  HYP={hw[i-1]!r}")
             i -= 1; j -= 1
         elif i > 0 and d[i][j] == d[i - 1][j] + 1:
-            errors.append(f"  insert HYP[{i-1}]={hw[i-1]!r:14s}  (REF にない)")
+            errors.append(f"  insert HYP[{i-1}]={hw[i-1]!r:14s}  (not in REF)")
             i -= 1
         else:
-            errors.append(f"  delete REF[{j-1}]={rw[j-1]!r:14s}  (HYP にない)")
+            errors.append(f"  delete REF[{j-1}]={rw[j-1]!r:14s}  (not in HYP)")
             j -= 1
 
     return list(reversed(errors))

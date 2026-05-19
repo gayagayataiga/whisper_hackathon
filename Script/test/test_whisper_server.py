@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-test_whisper_server.py - 推論サーバー(8001) /transcribe の手動疎通確認
+test_whisper_server.py - Manual connectivity check for inference server (8001) /transcribe
 
-multipart/form-data で WAV を POST し、文字起こし結果を表示する。
-pytest は使わず、httpx で 1 回叩くだけの手動スクリプト。
+POST a WAV as multipart/form-data and display the transcription result.
+No pytest — just a manual script that hits the endpoint once with httpx.
 
-使い方:
+Usage:
     python Script/test/test_whisper_server.py path/to/audio.wav
     python Script/test/test_whisper_server.py path/to/audio.wav --url http://localhost:8001/transcribe
 """
@@ -20,9 +20,9 @@ DEFAULT_URL = "http://localhost:8001/transcribe"
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Whisper 推論サーバーへ WAV を投げて結果を表示")
-    parser.add_argument("wav_path", help="送信する WAV ファイル (16kHz / 16bit / モノラル)")
-    parser.add_argument("--url", default=DEFAULT_URL, help=f"推論エンドポイント (default: {DEFAULT_URL})")
+    parser = argparse.ArgumentParser(description="Send a WAV to the Whisper inference server and display the result")
+    parser.add_argument("wav_path", help="WAV file to send (16kHz / 16bit / mono)")
+    parser.add_argument("--url", default=DEFAULT_URL, help=f"Inference endpoint (default: {DEFAULT_URL})")
     args = parser.parse_args()
 
     wav = Path(args.wav_path)
